@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { Eye, ExternalLink, CheckCircle, ArrowRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Eye, ExternalLink, CheckCircle, ArrowRight, X } from 'lucide-react';
 
 interface CommitmentCreatedModalProps {
     isOpen: boolean;
@@ -22,6 +23,12 @@ export const CommitmentSuccessModal: React.FC<CommitmentCreatedModalProps> = ({
 }) => {
     const modalRef = useRef<HTMLDivElement>(null);
     const primaryButtonRef = useRef<HTMLButtonElement>(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     // Focus trap and keyboard handling
     useEffect(() => {
@@ -36,7 +43,7 @@ export const CommitmentSuccessModal: React.FC<CommitmentCreatedModalProps> = ({
 
             if (e.key === 'Tab' && modalRef.current) {
                 const focusableElements = modalRef.current.querySelectorAll(
-                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                    'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
                 );
                 const firstElement = focusableElements[0] as HTMLElement;
                 const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
@@ -56,21 +63,15 @@ export const CommitmentSuccessModal: React.FC<CommitmentCreatedModalProps> = ({
         };
 
         document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
+        document.body.style.overflow = 'hidden';
 
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = '';
-        }
         return () => {
+            document.removeEventListener('keydown', handleKeyDown);
             document.body.style.overflow = '';
         };
-    }, [isOpen]);
+    }, [isOpen, onClose]);
 
-    if (!isOpen) return null;
+    if (!isOpen || !mounted) return null;
 
     const handleBackdropClick = (e: React.MouseEvent) => {
         if (e.target === e.currentTarget) {
@@ -84,160 +85,123 @@ export const CommitmentSuccessModal: React.FC<CommitmentCreatedModalProps> = ({
         'You can trade this commitment NFT in the marketplace',
     ];
 
-    // Truncate commitment ID for mobile
-    const truncateCommitmentId = (id: string) => {
-        if (typeof window !== 'undefined' && window.innerWidth < 640) {
-            return `${id.slice(0, 8)}...${id.slice(-6)}`;
-        }
-        return id;
-    };
-
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#0A0A0A]/80 backdrop-blur-sm animate-fadeIn overflow-y-auto"
+            className="fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
             onClick={handleBackdropClick}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
         >
-            <div className="flex items-center justify-center min-h-screen sm:min-h-fit w-full">
-                <div
-                    ref={modalRef}
-                    className="relative w-full bg-[#0a0909] max-w-[95vw] sm:max-w-125 lg:max-w-125 rounded-xl sm:rounded-2xl shadow-[0_0_0_1px_rgba(45,212,191,0.1),0_0_60px_rgba(45,212,191,0.25),0_20px_60px_rgba(0,0,0,0.5)] animate-slideUp my-4 sm:my-0 max-h-[95vh] sm:max-h-[95vh] overflow-y-auto"
-                >
-                    <div className="px-4 sm:px-6 md:px-8 lg:px-10 pt-6 sm:pt-8 md:pt-10 lg:pt-12 pb-6 sm:pb-8 md:pb-10">
-                        {/* Success Icon - Fixed to stay visible */}
-                        <div className="flex justify-center mb-6 sm:mb-8 sticky top-0 bg-[#0a0909] pt-4 pb-2 sm:pt-0 sm:pb-0 sm:relative sm:bg-transparent">
-                            <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-25 lg:h-25">
-                                {/* BLUR BACKGROUND LAYER */}
-                                <div className="absolute inset-0 bg-[#0FF0FC] opacity-30 blur-xl sm:blur-2xl rounded-full"></div>
+            <div
+                ref={modalRef}
+                className="w-full max-h-[100dvh] sm:max-h-[90vh] sm:max-w-[540px] overflow-y-auto bg-[#0A0A0A] sm:border border-[#FFFFFF1A] sm:rounded-[32px] flex flex-col relative shadow-2xl animate-in slide-in-from-bottom-8 duration-500 ease-out"
+            >
+                {/* Header Actions */}
+                <div className="absolute top-6 right-6 z-10">
+                    <button
+                        onClick={onClose}
+                        className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all border border-white/10 hover:scale-105 active:scale-95"
+                        aria-label="Close modal"
+                    >
+                        <X className="w-5 h-5 text-white/50" />
+                    </button>
+                </div>
 
-                                {/* MAIN CIRCLE */}
-                                <div className="relative w-full h-full rounded-full border-2 border-[#0FF0FC] bg-[#0FF0FC]/10 flex items-center justify-center z-10">
-                                    <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-[#0FF0FC] shadow-2xl shadow-[#0FF0FC]" strokeWidth={2.5} />
-                                </div>
+                {/* Content Container */}
+                <div className="px-6 sm:px-10 pt-12 pb-10 flex-1">
+                    {/* Success Icon Section */}
+                    <div className="flex flex-col items-center mb-8">
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 mb-6">
+                            <div className="absolute inset-0 bg-[#0FF0FC] opacity-20 blur-2xl rounded-full animate-pulse"></div>
+                            <div className="relative w-full h-full rounded-full border-2 border-[#0FF0FC] bg-[#0FF0FC]/10 flex items-center justify-center z-10 shadow-[inner_0_0_20px_rgba(15,240,252,0.2)]">
+                                <CheckCircle className="w-10 h-10 sm:w-12 sm:h-12 text-[#0FF0FC]" strokeWidth={2.5} />
                             </div>
                         </div>
 
-                        {/* Title Section */}
-                        <div className="text-center mb-6 sm:mb-8">
-                            <h2 id="modal-title" className="text-2xl sm:text-3xl md:text-[30px] font-bold text-white mb-2 sm:mb-3 tracking-tight leading-tight">
+                        <div className="text-center">
+                            <h2 id="modal-title" className="text-[28px] sm:text-[32px] font-bold text-white mb-2 tracking-tight leading-tight">
                                 Commitment Created!
                             </h2>
-                            <p className="text-sm sm:text-base text-[#99A1AF] font-medium sm:font-semibold leading-relaxed px-2 sm:px-0">
+                            <p className="text-[15px] sm:text-[16px] text-white/50 font-medium leading-relaxed max-w-[340px] mx-auto">
                                 Your liquidity commitment has been successfully created and is now active
                             </p>
                         </div>
+                    </div>
 
-                        {/* Commitment ID Section */}
-                        <div className="bg-[#0FF0FC]/5 border border-[#0FF0FC]/20 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 md:py-5 mb-6 sm:mb-8">
-                            <div className="text-xs sm:text-sm md:text-base text-[#99A1AF] text-center mb-1.5 sm:mb-2.5">
-                                Commitment ID
-                            </div>
-                            <div className="text-center overflow-x-auto">
-                                <span className="font-mono text-sm sm:text-base md:text-lg font-semibold text-[#0FF0FC] tracking-wider whitespace-nowrap">
-                                    {truncateCommitmentId(commitmentId)}
-                                </span>
-                            </div>
+                    {/* Commitment ID Block - Standardized */}
+                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-[24px] p-6 mb-8 text-center group hover:bg-white/[0.05] transition-colors overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-[#0FF0FC] opacity-[0.02] blur-2xl rounded-full -mr-12 -mt-12 group-hover:opacity-[0.04] transition-opacity" />
+                        <div className="text-white/40 text-[13px] font-bold mb-3 uppercase tracking-[0.2em] ml-1">
+                            Commitment ID
                         </div>
-
-                        {/* Next Steps Section */}
-                        <div className="mb-6 sm:mb-8">
-                            <h3 className="text-xs sm:text-sm font-semibold text-white mb-3 sm:mb-4">Next Steps:</h3>
-                            <ul className="space-y-2 sm:space-y-3">
-                                {nextSteps.map((step, index) => (
-                                    <li key={index} className="flex items-start gap-2 sm:gap-3">
-                                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 shrink-0 text-[#0FF0FC]" strokeWidth={2.5} />
-                                        <span className="text-xs sm:text-sm text-[#D1D5DC] leading-relaxed">{step}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                        <div className="font-mono text-[14px] sm:text-[16px] font-bold text-[#0FF0FC] tracking-wider break-all bg-white/5 px-4 py-3 rounded-xl border border-white/5">
+                            {commitmentId}
                         </div>
+                    </div>
 
-                        {/* Primary Action Button */}
+                    {/* Next Steps List */}
+                    <div className="mb-10 lg:px-2">
+                        <h3 className="text-[14px] font-bold text-white/90 uppercase tracking-widest mb-5 ml-1">
+                            Next Steps
+                        </h3>
+                        <div className="space-y-4">
+                            {nextSteps.map((step, index) => (
+                                <div key={index} className="flex items-start gap-4 p-1">
+                                    <div className="mt-1 w-5 h-5 rounded-full bg-[#0FF0FC]/10 border border-[#0FF0FC]/30 flex items-center justify-center shrink-0">
+                                        <CheckCircle className="w-3 h-3 text-[#0FF0FC]" strokeWidth={3} />
+                                    </div>
+                                    <span className="text-[14px] sm:text-[15px] text-white/70 leading-relaxed font-medium">
+                                        {step}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Actions Block - Standardized */}
+                    <div className="space-y-3">
                         <button
                             ref={primaryButtonRef}
                             onClick={onViewCommitment}
-                            className="w-full border border-[#0FF0FC] rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-center gap-2 sm:gap-2.5 text-sm sm:text-base md:text-lg font-bold bg-linear-to-r from-[#F5F5F7] to-[#909091] bg-clip-text text-transparent shadow-[0_0_40px_rgba(45,212,191,0.2)] hover:shadow-[0_0_30px_rgba(45,212,191,0.3)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0FF0FC] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0909] mb-4"
+                            className="w-full bg-[#0FF0FC] hover:bg-[#0FF0FC]/90 text-black rounded-2xl py-4 flex items-center justify-center gap-3 text-[16px] font-bold transition-all shadow-[0_0_30px_rgba(15,240,252,0.3)] hover:scale-[1.01] active:scale-[0.98]"
                         >
-                            <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-[#0FF0FC]" />
+                            <Eye className="w-5 h-5" />
                             View Commitment
                         </button>
-
-                        {/* Secondary Action Buttons */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-6">
+                        
+                        <div className="grid grid-cols-2 gap-3">
                             <button
                                 onClick={onCreateAnother}
-                                className="bg-[#161616] border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-5 py-2.5 sm:py-3.5 flex items-center justify-center gap-1.5 text-xs sm:text-sm md:text-[15px] font-semibold text-white hover:border-white/20 hover:text-white transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f26] order-2 sm:order-1"
+                                className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl py-3.5 flex items-center justify-center gap-2 text-[14px] font-bold text-white transition-all active:scale-[0.98]"
                             >
-                                Create Another
-                                <ArrowRight className='w-4 h-4 sm:w-5 sm:h-5' />
+                                <span className="opacity-70">Create New</span>
+                                <ArrowRight className='w-4 h-4' />
                             </button>
                             <button
                                 onClick={onClose}
-                                className="bg-[#161616] border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-5 py-2.5 sm:py-3.5 text-xs sm:text-sm md:text-[15px] text-white font-semibold hover:border-white/20 hover:text-white transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f26] order-1 sm:order-2"
+                                className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl py-3.5 text-[14px] font-bold text-white transition-all active:scale-[0.98]"
                             >
                                 Close
                             </button>
                         </div>
-
-                        {/* Footer Link */}
-                        {onViewOnExplorer && (
-                            <>
-                                <div className="border-t border-[#0FF0FC]/20 my-4 sm:my-6"></div>
-                                <button
-                                    onClick={onViewOnExplorer}
-                                    className="w-full flex items-center justify-center gap-1.5 text-xs sm:text-sm text-gray-400 hover:text-teal-400 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f26] rounded-md py-2"
-                                >
-                                    View on Stellar Explorer
-                                    <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                </button>
-                            </>
-                        )}
                     </div>
+
+                    {/* Footer Explorer Link */}
+                    {onViewOnExplorer && (
+                        <div className="mt-8 pt-6 border-t border-white/5">
+                            <button
+                                onClick={onViewOnExplorer}
+                                className="w-full flex items-center justify-center gap-2 text-[13px] text-white/30 hover:text-[#0FF0FC] transition-colors transition-all py-1"
+                            >
+                                View on Stellar Explorer
+                                <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
-
-            <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(10px) scale(0.98);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out;
-        }
-
-        .animate-slideUp {
-          animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-
-        /* Custom scrollbar for modal */
-        @media (max-height: 640px) {
-          .overflow-y-auto {
-            padding-top: 20px;
-            padding-bottom: 20px;
-          }
-        }
-
-        /* Better touch targets on mobile */
-        @media (max-width: 640px) {
-          button {
-            min-height: 44px;
-          }
-        }
-      `}</style>
-        </div>
+        </div>,
+        document.body
     );
 };

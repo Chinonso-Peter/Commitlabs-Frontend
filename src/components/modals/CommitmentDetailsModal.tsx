@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Calendar, Activity, AlertTriangle, DollarSign } from "lucide-react";
+import { X, Calendar, Activity, AlertTriangle, DollarSign, ChevronRight } from "lucide-react";
 
 type CommitmentTypeVariant = "safe" | "balanced" | "aggressive";
 type CommitmentTypeCapitalized = "Safe" | "Balanced" | "Aggressive";
@@ -94,53 +94,37 @@ export function CommitmentDetailsModal({
     return () => setMounted(false);
   }, []);
 
-  // Focus trap implementation
-  useEffect(() => {
-    if (!isOpen || !modalRef.current) return;
-
-    const modal = modalRef.current;
-    const focusableElements = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const firstElement = focusableElements[0] as HTMLElement;
-    const lastElement = focusableElements[
-      focusableElements.length - 1
-    ] as HTMLElement;
-
-    // Focus first element (close button)
-    setTimeout(() => {
-      closeButtonRef.current?.focus();
-    }, 100);
-
-    const handleTabKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-
-      if (e.shiftKey) {
-        if (document.activeElement === firstElement) {
-          lastElement?.focus();
-          e.preventDefault();
-        }
-      } else {
-        if (document.activeElement === lastElement) {
-          firstElement?.focus();
-          e.preventDefault();
-        }
-      }
-    };
-
-    modal.addEventListener("keydown", handleTabKey);
-    return () => modal.removeEventListener("keydown", handleTabKey);
-  }, [isOpen]);
-
-  // Keyboard handling
+  // Keyboard and Body Scroll handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      
+      // Focus trap
+      if (e.key === "Tab" && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0] as HTMLElement;
+        const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement?.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement?.focus();
+            e.preventDefault();
+          }
+        }
+      }
     };
 
     if (isOpen) {
       document.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
+      setTimeout(() => closeButtonRef.current?.focus(), 100);
     }
 
     return () => {
@@ -153,34 +137,33 @@ export function CommitmentDetailsModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px] animate-fadeIn"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
-      aria-describedby="modal-description"
     >
       <div
         ref={modalRef}
-        className="w-full max-w-[600px] max-h-[90vh] overflow-y-auto hide-scrollbar bg-[#0A0A0A] border border-[#FFFFFF1A] rounded-[24px] p-6 text-white relative shadow-2xl animate-scaleIn"
+        className="w-full max-h-[100dvh] sm:max-h-[90vh] sm:max-w-[640px] overflow-y-auto bg-[#0A0A0A] sm:border border-[#FFFFFF1A] sm:rounded-[32px] flex flex-col relative shadow-2xl animate-in slide-in-from-bottom-8 duration-500 ease-out"
       >
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-[60px] h-[60px] rounded-[18px] bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(0,0,0,0)_100%)] border border-[#FFFFFF1A] grid place-items-center">
+        {/* Header - Sticky on mobile */}
+        <div className="sticky top-0 z-10 bg-[#0A0A0A]/80 backdrop-blur-md px-6 sm:px-10 py-6 flex items-start justify-between border-b border-[#FFFFFF0D] sm:border-none">
+          <div className="flex items-center gap-5">
+            <div className="w-[52px] h-[52px] sm:w-[64px] sm:h-[64px] rounded-[18px] bg-gradient-to-b from-white/10 to-transparent border border-white/10 flex items-center justify-center shadow-inner">
               <TypeIcon type={capitalizeType(typeVariant)} />
             </div>
             <div>
-              <h2
-                id="modal-title"
-                className="text-[24px] font-bold leading-tight"
-              >
+              <h2 id="modal-title" className="text-[20px] sm:text-[28px] font-bold tracking-tight text-white leading-tight">
                 {typeLabel}
               </h2>
               {statusLabel && (
-                <span className="inline-block mt-2 text-[12px] font-semibold px-3 py-1.5 rounded-full bg-[#0FF0FC1A] text-[#0FF0FC] border border-[#0FF0FC33]">
-                  {statusLabel}
-                </span>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <div className="w-2 h-2 rounded-full bg-[#0FF0FC] animate-pulse" />
+                  <span className="text-[13px] font-medium text-[#0FF0FC]/90 uppercase tracking-wider">
+                    {statusLabel}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -190,75 +173,74 @@ export function CommitmentDetailsModal({
             className="focus-ring w-10 h-10 rounded-full bg-[#FFFFFF0D] hover:bg-[#FFFFFF1A] flex items-center justify-center transition-colors"
             aria-label="Close modal"
           >
-            <X className="w-5 h-5 text-white/70" />
+            <X className="w-5 h-5 text-white/50" />
           </button>
         </div>
 
-        {/* Current Price Card */}
-        <div
-          id="modal-description"
-          className="bg-[#0FF0FC08] border border-[#0FF0FC1A] rounded-[20px] p-6 mb-6"
-        >
-          <div className="text-[#9CA3AF] text-[14px] font-medium mb-1">
-            Current Price
-          </div>
-          <div className="text-[32px] font-bold text-white tracking-tight">
-            {currentPrice}
-          </div>
-        </div>
-
-        {/* Stats Grid - Responsive */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-          {/* Amount Committed */}
-          <div className="bg-[#FFFFFF05] rounded-[16px] p-5 border border-[#FFFFFF0D]">
-            <div className="flex items-center gap-2 mb-3 text-[#9CA3AF] text-[14px]">
-              <DollarSign className="w-3.5 h-3.5 text-[#0FF0FC]" />
-              Amount Committed
+        {/* Content */}
+        <div className="px-6 sm:px-10 pb-10">
+          {/* Main Hero Metric */}
+          <div className="bg-gradient-to-br from-[#0FF0FC0D] to-transparent border border-[#0FF0FC1A] rounded-[24px] p-6 sm:p-8 mb-6 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#0FF0FC] opacity-[0.03] blur-3xl rounded-full -mr-16 -mt-16 group-hover:opacity-[0.05] transition-opacity" />
+            <div className="text-[#9CA3AF] text-[14px] font-medium mb-1.5">
+              Current Market Price
             </div>
-            <div className="text-[20px] font-bold tracking-tight">
-              {amountCommitted}
+            <div className="flex items-baseline gap-2">
+              <div className="text-[36px] sm:text-[44px] font-bold text-white tracking-tighter leading-none">
+                {currentPrice}
+              </div>
+              <div className="text-[14px] font-mono text-[#0FF0FC] font-semibold">USD</div>
             </div>
           </div>
 
-          {/* Remaining Duration */}
-          <div className="bg-[#FFFFFF05] rounded-[16px] p-5 border border-[#FFFFFF0D]">
-            <div className="flex items-center gap-2 mb-3 text-[#9CA3AF] text-[14px]">
-              <Calendar className="w-3.5 h-3.5 text-[#0FF0FC]" />
-              Remaining Duration
+          {/* Stats Group - Consistency with metadata blocks */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
+            <div className="bg-white/[0.03] rounded-[20px] p-4 sm:p-5 border border-white/[0.08] hover:bg-white/[0.05] transition-colors">
+              <div className="flex items-center gap-2 mb-3 text-white/40 text-[13px] font-medium">
+                <DollarSign className="w-3.5 h-3.5 text-[#0FF0FC]" />
+                Committed
+              </div>
+              <div className="text-[18px] sm:text-[22px] font-bold text-white leading-none">
+                {amountCommitted}
+              </div>
             </div>
-            <div className="text-[20px] font-bold tracking-tight">
-              {remainingDuration}
+
+            <div className="bg-white/[0.03] rounded-[20px] p-4 sm:p-5 border border-white/[0.08] hover:bg-white/[0.05] transition-colors">
+              <div className="flex items-center gap-2 mb-3 text-white/40 text-[13px] font-medium">
+                <Calendar className="w-3.5 h-3.5 text-[#0FF0FC]" />
+                Remaining
+              </div>
+              <div className="text-[18px] sm:text-[22px] font-bold text-white leading-none">
+                {remainingDuration}
+              </div>
+            </div>
+
+            <div className="bg-white/[0.03] rounded-[20px] p-4 sm:p-5 border border-white/[0.08] hover:bg-white/[0.05] transition-colors">
+              <div className="flex items-center gap-2 mb-3 text-white/40 text-[13px] font-medium">
+                <Activity className="w-3.5 h-3.5 text-[#0FF0FC]" />
+                Yield
+              </div>
+              <div className="text-[18px] sm:text-[22px] font-bold text-[#0FF0FC] leading-none">
+                {currentYield}
+              </div>
+            </div>
+
+            <div className="bg-white/[0.03] rounded-[20px] p-4 sm:p-5 border border-white/[0.08] hover:bg-white/[0.05] transition-colors text-right sm:text-left">
+              <div className="flex items-center justify-end sm:justify-start gap-2 mb-3 text-white/40 text-[13px] font-medium">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#FF8904]" />
+                Max Loss
+              </div>
+              <div className="text-[18px] sm:text-[22px] font-bold text-white leading-none">
+                {maxLoss}
+              </div>
             </div>
           </div>
 
-          {/* Current Yield */}
-          <div className="bg-[#FFFFFF05] rounded-[16px] p-5 border border-[#FFFFFF0D]">
-            <div className="flex items-center gap-2 mb-3 text-[#9CA3AF] text-[14px]">
-              <Activity className="w-3.5 h-3.5 text-[#0FF0FC]" />
-              Current Yield
-            </div>
-            <div className="text-[20px] font-bold tracking-tight text-[#0FF0FC]">
-              {currentYield}
-            </div>
-          </div>
-
-          {/* Max Loss */}
-          <div className="bg-[#FFFFFF05] rounded-[16px] p-5 border border-[#FFFFFF0D]">
-            <div className="flex items-center gap-2 mb-3 text-[#9CA3AF] text-[14px]">
-              <AlertTriangle className="w-3.5 h-3.5 text-[#0FF0FC]" />
-              Max Loss
-            </div>
-            <div className="text-[20px] font-bold tracking-tight">
-              {maxLoss}
-            </div>
-          </div>
-        </div>
-
-        {/* Compliance & Attestations */}
-        <div>
-          <h3 className="text-[16px] font-bold mb-4">
-            Compliance & Attestations
-          </h3>
+          {/* Compliance Section */}
+          <div className="space-y-4">
+            <h3 className="text-[15px] font-bold text-white/90 uppercase tracking-widest ml-1">
+              Compliance & Attestations
+            </h3>
 
           <div className="space-y-3">
             {complianceItems.map((item) => (
@@ -283,6 +265,16 @@ export function CommitmentDetailsModal({
               </button>
             ))}
           </div>
+        </div>
+        
+        {/* Footer Actions - Standardized Bottom Placement */}
+        <div className="px-6 sm:px-10 pb-10 mt-auto">
+          <button
+            onClick={onClose}
+            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl py-4 text-[16px] font-bold text-white transition-all active:scale-[0.98]"
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>,

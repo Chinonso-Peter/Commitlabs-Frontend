@@ -1,48 +1,21 @@
-'use client'
+'use client';
 
-import { useEffect, useRef, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import { AlertTriangle, X } from 'lucide-react'
-import styles from './CommitmentEarlyExitModal.module.css'
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, X, ChevronRight, Info } from 'lucide-react';
 
 export interface CommitmentEarlyExitModalProps {
-  isOpen: boolean
-  commitmentId: string
-  originalAmount: string
-  penaltyPercent: string
-  penaltyAmount: string
-  netReceiveAmount: string
-  hasAcknowledged: boolean
-  onChangeAcknowledged: (value: boolean) => void
-  onCancel: () => void
-  onConfirm: () => void
-  onClose?: () => void
-}
-
-const FOCUSABLE_SELECTOR =
-  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-}
-
-function trapFocus(container: HTMLElement, e: KeyboardEvent) {
-  if (e.key !== 'Tab') return
-  const focusable = getFocusableElements(container)
-  if (focusable.length === 0) return
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (e.shiftKey) {
-    if (document.activeElement === first) {
-      e.preventDefault()
-      last.focus()
-    }
-  } else {
-    if (document.activeElement === last) {
-      e.preventDefault()
-      first.focus()
-    }
-  }
+  isOpen: boolean;
+  commitmentId: string;
+  originalAmount: string;
+  penaltyPercent: string;
+  penaltyAmount: string;
+  netReceiveAmount: string;
+  hasAcknowledged: boolean;
+  onChangeAcknowledged: (value: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onClose?: () => void;
 }
 
 export default function CommitmentEarlyExitModal({
@@ -58,147 +31,167 @@ export default function CommitmentEarlyExitModal({
   onConfirm,
   onClose,
 }: CommitmentEarlyExitModalProps) {
-  const cardRef = useRef<HTMLDivElement>(null)
-  const previousActiveElement = useRef<HTMLElement | null>(null)
-
-  const handleClose = useCallback(() => {
-    ;(onClose ?? onCancel)()
-  }, [onClose, onCancel])
+  const modalRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return
-    previousActiveElement.current = document.activeElement as HTMLElement | null
-  }, [isOpen])
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  const handleClose = () => {
+    (onClose ?? onCancel)();
+  };
 
   useEffect(() => {
-    if (!isOpen) return
-    const container = cardRef.current?.closest('[role="dialog"]') as HTMLElement
-    if (!container) return
-    const focusable = getFocusableElements(container)
-    const first = focusable[0]
-    if (first) first.focus()
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose()
-        return
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+
+      // Focus trap
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const first = focusableElements[0] as HTMLElement;
+        const last = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
-      trapFocus(container, e)
-    }
-    document.addEventListener('keydown', onKeyDown)
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
     return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      if (previousActiveElement.current?.focus) {
-        previousActiveElement.current.focus()
-      }
-    }
-  }, [isOpen, handleClose])
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) handleClose()
-  }
+  if (!isOpen || !mounted) return null;
 
-  if (!isOpen) return null
-
-  const modalContent = (
+  return createPortal(
     <div
-      className={styles.overlay}
-      onClick={handleOverlayClick}
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
+      onClick={(e) => e.target === e.currentTarget && handleClose()}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="early-exit-modal-title"
-      aria-describedby="early-exit-modal-desc"
+      aria-labelledby="early-exit-title"
     >
-      <div ref={cardRef} className={styles.card} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.headerRow}>
-          <div className={styles.warningIconWrap} aria-hidden>
-            <AlertTriangle size={24} strokeWidth={2.5} />
-          </div>
-          <div className={styles.headerText}>
-            <h2 id="early-exit-modal-title" className={styles.title}>
-              Early Exit Warning
-            </h2>
-            <p id="early-exit-modal-desc" className={styles.subtitle}>
-              You are about to exit your commitment early. This will incur penalties.
-            </p>
+      <div
+        ref={modalRef}
+        className="w-full sm:max-w-[520px] mt-auto sm:mt-0 bg-[#0A0A0A] border-t sm:border border-[#FF8A04]/30 rounded-t-[32px] sm:rounded-[32px] flex flex-col relative shadow-[0_0_60px_rgba(255,138,4,0.15)] animate-in slide-in-from-bottom-8 duration-500 ease-out"
+      >
+        {/* Header - Consistency with Details modal */}
+        <div className="px-6 sm:px-10 py-8 flex items-start justify-between">
+          <div className="flex items-center gap-5">
+            <div className="w-[52px] h-[52px] sm:w-[60px] sm:h-[60px] rounded-[18px] bg-[#FF8A04]/10 border border-[#FF8A04]/20 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 text-[#FF8A04]" strokeWidth={2.5} />
+            </div>
+            <div>
+              <h2 id="early-exit-title" className="text-[20px] sm:text-[24px] font-bold tracking-tight text-white leading-tight">
+                Early Exit Warning
+              </h2>
+              <p className="text-[13px] sm:text-[14px] text-white/50 font-medium mt-1 leading-snug">
+                This action is irreversible and carries penalties.
+              </p>
+            </div>
           </div>
           <button
-            type="button"
-            className={styles.closeButton}
             onClick={handleClose}
+            className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all border border-white/10"
             aria-label="Close modal"
           >
-            <X size={20} strokeWidth={2} />
+            <X className="w-5 h-5 text-white/50" />
           </button>
         </div>
 
-        <table className={styles.summaryTable}>
-          <tbody>
-            <tr>
-              <th scope="row">Commitment ID</th>
-              <td>{commitmentId}</td>
-            </tr>
-            <tr>
-              <th scope="row">Original Amount</th>
-              <td>{originalAmount}</td>
-            </tr>
-            <tr>
-              <th scope="row">Early Exit Penalty</th>
-              <td>{penaltyPercent} ({penaltyAmount})</td>
-            </tr>
-            <tr>
-              <th scope="row">You&apos;ll Receive</th>
-              <td className={styles.netReceive}>{netReceiveAmount}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className={styles.noticeBlock}>
-          <div className={styles.noticeTitle}>
-            <AlertTriangle size={18} strokeWidth={2.5} aria-hidden />
-            Important
+        {/* Content Body */}
+        <div className="px-6 sm:px-10 pb-8">
+          {/* Summary Table - Converted to metadata blocks for consistency */}
+          <div className="space-y-2 mb-8">
+            <div className="flex justify-between items-center py-3 border-b border-white/5 px-1">
+              <span className="text-[14px] text-white/40 font-medium">Commitment ID</span>
+              <span className="text-[14px] font-mono text-white/80 font-bold">{commitmentId.slice(0, 8)}...{commitmentId.slice(-6)}</span>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-white/5 px-1">
+              <span className="text-[14px] text-white/40 font-medium">Original amount</span>
+              <span className="text-[14px] text-white font-bold">{originalAmount}</span>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-white/5 px-1">
+              <span className="text-[14px] text-[#FF8A04]/80 font-medium">Early exit penalty ({penaltyPercent})</span>
+              <span className="text-[14px] text-[#FF8A04] font-bold">-{penaltyAmount}</span>
+            </div>
+            <div className="flex justify-between items-center py-4 px-1">
+              <span className="text-[15px] text-white font-bold tracking-tight">You&apos;ll receive</span>
+              <span className="text-[18px] text-[#0FF0FC] font-extrabold tracking-tight">{netReceiveAmount}</span>
+            </div>
           </div>
-          <ul className={styles.noticeList}>
-            <li>Loss of a percentage of your committed amount.</li>
-            <li>On-chain recording as an early exit.</li>
-            <li>Compliance score impact.</li>
-            <li>Loss of full yield potential.</li>
-          </ul>
-        </div>
 
-        <div className={styles.checkboxRow}>
-          <input
-            id="early-exit-ack"
-            type="checkbox"
-            className={styles.checkbox}
-            checked={hasAcknowledged}
-            onChange={(e) => onChangeAcknowledged(e.target.checked)}
-            aria-describedby="early-exit-ack-desc"
-          />
-          <label id="early-exit-ack-desc" htmlFor="early-exit-ack" className={styles.checkboxLabel}>
-            I understand the consequences and want to proceed with early exit.
+          {/* Important Notice Block */}
+          <div className="bg-[#FF8A04]/10 border border-[#FF8A04]/20 rounded-2xl p-5 mb-8 group hover:bg-[#FF8A04]/15 transition-colors">
+            <div className="flex items-center gap-2.5 mb-4 text-[#FF8A04]">
+              <Info className="w-4 h-4" />
+              <span className="text-[13px] font-bold uppercase tracking-widest">Important consequences</span>
+            </div>
+            <ul className="space-y-2.5">
+              {[
+                'Loss of a percentage of your committed amount',
+                'On-chain recording as an early exit',
+                'Compliance score impact',
+                'Loss of full yield potential'
+              ].map((text, i) => (
+                <li key={i} className="flex items-start gap-2.5 leading-snug">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#FF8A04]/40 mt-1.5 shrink-0" />
+                  <span className="text-[13px] text-white/70 font-medium">{text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Acknowledgment Checkbox */}
+          <label className="flex items-start gap-4 p-4 bg-white/[0.02] border border-white/[0.05] rounded-2xl cursor-pointer hover:bg-white/[0.04] transition-all group active:scale-[0.99] mb-8">
+            <div className="relative flex items-center">
+              <input
+                type="checkbox"
+                className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-white/20 bg-white/5 transition-all checked:border-[#FF8A04] checked:bg-[#FF8A04]"
+                checked={hasAcknowledged}
+                onChange={(e) => onChangeAcknowledged(e.target.checked)}
+              />
+              <X className="absolute h-3.5 w-3.5 text-black opacity-0 peer-checked:opacity-100 left-0.5 top-0.5 pointer-events-none" strokeWidth={4} />
+            </div>
+            <span className="text-[14px] text-white/70 font-medium leading-snug select-none group-hover:text-white transition-colors">
+              I understand the consequences and want to proceed with early exit.
+            </span>
           </label>
-        </div>
 
-        <div className={styles.footer}>
-          <button type="button" className={styles.cancelButton} onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={styles.confirmButton}
-            disabled={!hasAcknowledged}
-            onClick={onConfirm}
-            aria-disabled={!hasAcknowledged}
-          >
-            Confirm Early Exit
-          </button>
+          {/* Action Buttons - Standardized placement */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={onCancel}
+              className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-[18px] py-4 text-[15px] font-bold text-white transition-all order-2 sm:order-1 active:scale-[0.98]"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={!hasAcknowledged}
+              onClick={onConfirm}
+              className="flex-[1.5] bg-[#FF8A04] disabled:grayscale disabled:opacity-30 hover:bg-[#FF8A04]/90 text-black rounded-[18px] py-4 text-[15px] font-bold transition-all order-1 sm:order-2 shadow-[0_0_30px_rgba(255,138,4,0.25)] active:scale-[0.98]"
+            >
+              Confirm Early Exit
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
-
-  if (typeof document !== 'undefined') {
-    return createPortal(modalContent, document.body)
-  }
-  return modalContent
 }
