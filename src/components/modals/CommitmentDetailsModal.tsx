@@ -170,7 +170,7 @@ export function CommitmentDetailsModal({
           <button
             ref={closeButtonRef}
             onClick={onClose}
-            className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all border border-white/10 hover:scale-105 active:scale-95"
+            className="focus-ring w-10 h-10 rounded-full bg-[#FFFFFF0D] hover:bg-[#FFFFFF1A] flex items-center justify-center transition-colors"
             aria-label="Close modal"
           >
             <X className="w-5 h-5 text-white/50" />
@@ -242,36 +242,28 @@ export function CommitmentDetailsModal({
               Compliance & Attestations
             </h3>
 
-            <div className="space-y-2.5">
-              {complianceItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => onSelectComplianceItem?.(item.id)}
-                  className={`w-full group flex items-center justify-between bg-white/[0.03] rounded-[16px] p-4 border border-white/[0.06] transition-all ${
-                    onSelectComplianceItem
-                      ? "hover:bg-white/[0.06] hover:border-white/[0.12] cursor-pointer"
-                      : "cursor-default"
-                  }`}
-                  disabled={!onSelectComplianceItem}
-                  aria-label={`${item.label}: ${item.statusLabel}`}
-                >
-                  <div className="flex items-center gap-3">
-                    {getStatusIcon(item.statusVariant)}
-                    <span className="text-white/70 text-[14px] font-medium">
-                      {item.label}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-white font-mono text-[13px] font-medium bg-white/5 px-2.5 py-1 rounded-md border border-white/5">
-                      {item.statusLabel}
-                    </span>
-                    {onSelectComplianceItem && (
-                      <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-white/50 transition-colors" />
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
+          <div className="space-y-3">
+            {complianceItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => onSelectComplianceItem?.(item.id)}
+                className={`focus-ring w-full flex items-center justify-between bg-[#FFFFFF03] rounded-[12px] p-4 border border-[#FFFFFF08] transition-colors ${
+                  onSelectComplianceItem
+                    ? "hover:bg-[#FFFFFF08] cursor-pointer"
+                    : "cursor-default"
+                }`}
+                disabled={!onSelectComplianceItem}
+                aria-label={`${item.label}: ${item.statusLabel}`}
+              >
+                <span className="text-[#9CA3AF] text-[14px]">
+                  {item.label}
+                </span>
+                <div className="flex items-center gap-2 text-white font-mono text-[13px]">
+                  {getStatusIcon(item.statusVariant)}
+                  {item.statusLabel}
+                </div>
+              </button>
+            ))}
           </div>
         </div>
         
