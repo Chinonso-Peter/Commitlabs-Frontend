@@ -1,43 +1,132 @@
 /**
- * Rate Limiting Strategy Strategy for Commitlabs Public API Endpoints.
+ * Distributed Rate Limiting Strategy for Commitlabs Public API Endpoints.
  * 
- * Current Implementation: 
- * - Developmental Light Stub: Always allows requests in development mode.
- * - Key-based structure: Ready to be wired into a real backend.
+ * This implementation uses @upstash/ratelimit with Redis for distributed,
+ * serverless-ready rate limiting.
  * 
- * Production Recommendation:
- * For production, we should use a distributed rate limiter that works with Next.js edge/serverless functions.
- * Recommended options:
- * 1. Upstash Redis with `@upstash/ratelimit`: Easiest to set up for Next.js, works at the edge.
- * 2. Vercel KV: Similar to Upstash, integrated into Vercel platform.
- * 3. Custom Redis instance: Good for higher volume or existing infrastructure.
+ * Required Environment Variables:
+ * - UPSTASH_REDIS_REST_URL: The REST URL of the Upstash Redis instance.
+ * - UPSTASH_REDIS_REST_TOKEN: The REST token for the Upstash Redis instance.
  * 
- * Example Production Logic (pseudocode):
- * const { success } = await ratelimit.limit(key);
- * if (!success) return new Response('Too Many Requests', { status: 429 });
+ * Local Development:
+ * If environment variables are missing, the limiter defaults to allowing all requests
+ * to avoid blocking local development.
  */
+
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+export interface RateLimitResult {
+  success: boolean;
+  limit: number;
+  remaining: number;
+  reset: number;
+}
+
+export type RateLimitRoute = 'auth' | 'commitments' | 'attestations' | 'marketplace' | 'ready' | 'default';
+
+const POLICIES: Record<RateLimitRoute, { requests: number; window: `${number} ${"s" | "m" | "h" | "d"}` }> = {
+  auth: { requests: 5, window: "1 m" },
+  commitments: { requests: 20, window: "1 m" },
+  attestations: { requests: 20, window: "1 m" },
+  marketplace: { requests: 30, window: "1 m" },
+  ready: { requests: 100, window: "1 m" },
+  default: { requests: 10, window: "1 m" },
+};
+
+let redis: Redis | null = null;
+const ratelimiters = new Map<RateLimitRoute, Ratelimit>();
+
+function getRedis() {
+  if (redis) return redis;
+  
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!url || !token) return null;
+
+  redis = new Redis({ url, token });
+  return redis;
+}
+
+function getRatelimiter(routeId: string): Ratelimit | null {
+  const route = (POLICIES[routeId as RateLimitRoute] ? routeId : 'default') as RateLimitRoute;
+  
+  if (ratelimiters.has(route)) {
+    return ratelimiters.get(route)!;
+  }
+
+  const client = getRedis();
+  if (!client) return null;
+
+  const policy = POLICIES[route];
+  const limiter = new Ratelimit({
+    redis: client,
+    limiter: Ratelimit.slidingWindow(policy.requests, policy.window),
+    analytics: true,
+    prefix: `@commitlabs/ratelimit/${route}`,
+  });
+
+  ratelimiters.set(route, limiter);
+  return limiter;
+}
 
 /**
  * Checks if a request should be rate limited.
  * 
  * @param key - A unique identifier for the requester (e.g., IP address, user ID, API key).
  * @param routeId - identifier for the specific route or resource being accessed.
- * @returns Promise<boolean> - Returns true if the request is allowed, false if rate limited.
+ * @returns Promise<RateLimitResult> - Metadata about the rate limit status.
  */
-export async function checkRateLimit(key: string, routeId: string): Promise<boolean> {
+export async function checkRateLimit(key: string, routeId: string): Promise<RateLimitResult> {
     const isDev = process.env.NODE_ENV === 'development';
+    const limiter = getRatelimiter(routeId);
 
-    if (isDev) {
-        console.log(`[RateLimit] Dev mode: Skipping check for key: ${key}, route: ${routeId}`);
-        return true;
+    if (!limiter) {
+        if (!isDev) {
+            console.warn(`[RateLimit] Production: Upstash Redis not configured. Allowing request for ${routeId}.`);
+        }
+        return { success: true, limit: 0, remaining: 0, reset: 0 };
     }
 
-    // TODO: Implement production rate limiting logic here.
-    // 1. Initialize connection to Redis/Upstash/KV.
-    // 2. define limits per routeId (e.g., 5 requests per minute for auth).
-    // 3. Increment counter and check against window.
+    try {
+        const result = await limiter.limit(key);
+        return {
+            success: result.success,
+            limit: result.limit,
+            remaining: result.remaining,
+            reset: result.reset,
+        };
+    } catch (error) {
+        console.error(`[RateLimit] Error checking rate limit for ${routeId}:`, error);
+        // Fail open in case of infrastructure failure to avoid service outage
+        return { success: true, limit: 0, remaining: 0, reset: 0 };
+    }
+}
 
-    console.warn(`[RateLimit] Production TODO: Rate limiting not yet implemented for ${routeId}. Defaulting to allow.`);
-
-    return true;
+/**
+ * Creates a consistent 429 Too Many Requests response with Retry-After and rate limit headers.
+ */
+export function createRateLimitResponse(result: RateLimitResult): Response {
+    const retryAfter = Math.max(0, Math.ceil((result.reset - Date.now()) / 1000));
+    
+    return new Response(
+        JSON.stringify({
+            error: {
+                code: 'TOO_MANY_REQUESTS',
+                message: 'Rate limit exceeded. Please try again later.',
+                retryAfter,
+            }
+        }),
+        {
+            status: 429,
+            headers: {
+                'Content-Type': 'application/json',
+                'Retry-After': retryAfter.toString(),
+                'X-RateLimit-Limit': result.limit.toString(),
+                'X-RateLimit-Remaining': result.remaining.toString(),
+                'X-RateLimit-Reset': result.reset.toString(),
+            }
+        }
+    );
 }
