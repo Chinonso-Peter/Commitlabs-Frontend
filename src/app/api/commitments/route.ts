@@ -3,6 +3,7 @@ import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { withApiHandler } from "@/lib/backend/withApiHandler";
 import { ok, fail } from "@/lib/backend/apiResponse";
 import { TooManyRequestsError } from "@/lib/backend/errors";
+import { parseJsonWithLimit, JSON_BODY_LIMITS } from "@/lib/backend/jsonBodyLimit";
 import { getUserCommitmentsFromChain, createCommitmentOnChain } from "@/lib/backend/services/contracts";
 
 interface CreateCommitmentRequestBody {
@@ -75,7 +76,10 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     throw new TooManyRequestsError();
   }
 
-  const body = (await req.json()) as CreateCommitmentRequestBody;
+  const parsed = await parseJsonWithLimit(req, {
+    limitBytes: JSON_BODY_LIMITS.commitmentsCreate,
+  });
+  const body = (parsed ?? {}) as Partial<CreateCommitmentRequestBody>;
 
   const {
     ownerAddress,

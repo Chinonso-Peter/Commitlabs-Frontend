@@ -7,11 +7,13 @@ import {
 import {
   normalizeBackendError,
   toBackendErrorResponse,
+  ApiError,
   ValidationError,
   TooManyRequestsError,
 } from '@/lib/backend/errors';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
+import { parseJsonWithLimit, JSON_BODY_LIMITS } from '@/lib/backend/jsonBodyLimit';
 import { getMockData } from '@/lib/backend/mockDb';
 import type { RecordAttestationOnChainParams } from '@/lib/backend/services/contracts';
 
@@ -180,10 +182,14 @@ export const POST = withApiHandler(async (req: NextRequest) => {
 
   let body: RecordAttestationRequestBody;
   try {
-    const raw = await req.json();
+    const raw = await parseJsonWithLimit(req, {
+      limitBytes: JSON_BODY_LIMITS.attestationsCreate,
+    });
     body = parseAndValidateBody(raw);
   } catch (err) {
-    if (err instanceof ValidationError) throw err;
+    // Preserve 413 / 400 / other ApiError semantics; only generic failures
+    // are remapped to a 400 "Invalid JSON" error.
+    if (err instanceof ApiError) throw err;
     throw new ValidationError('Invalid JSON in request body.');
   }
 
