@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError, UnauthorizedError } from '@/lib/backend/errors';
+import { validationErrorFromZod } from '@/lib/backend/validationErrors';
 import { verifySignatureWithNonce, createSessionToken } from '@/lib/backend/auth';
 
 // Request validation schema
@@ -32,7 +33,7 @@ export const POST = withApiHandler(async (req: NextRequest) => {
 
     const validation = VerifyRequestSchema.safeParse(body);
     if (!validation.success) {
-        throw new ValidationError('Invalid request data', validation.error.errors);
+        throw validationErrorFromZod(validation.error);
     }
 
     const { address, signature, message } = validation.data;

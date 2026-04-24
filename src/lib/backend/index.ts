@@ -29,4 +29,10 @@ export {
   InternalError,
   HTTP_ERROR_CODES,
 } from "./errors";
+export {
+  formatZodPath,
+  mapZodErrorToFieldErrors,
+  validationErrorFromZod,
+} from "./validationErrors";
+export type { FieldError } from "./validationErrors";
 export { withApiHandler } from "./withApiHandler";

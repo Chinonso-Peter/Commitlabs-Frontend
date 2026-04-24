@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok, fail } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError } from '@/lib/backend/errors';
+import { validationErrorFromZod } from '@/lib/backend/validationErrors';
 import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backend/auth';
 
 // Request validation schema
@@ -30,7 +31,7 @@ export const POST = withApiHandler(async (req: NextRequest) => {
 
     const validation = NonceRequestSchema.safeParse(body);
     if (!validation.success) {
-        throw new ValidationError('Invalid request data', validation.error.errors);
+        throw validationErrorFromZod(validation.error);
     }
 
     const { address } = validation.data;

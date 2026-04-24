@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError, NotFoundError, ConflictError } from '@/lib/backend/errors';
+import { validationErrorFromZod } from '@/lib/backend/validationErrors';
 import { settleCommitmentOnChain } from '@/lib/backend/services/contracts';
 import { logCommitmentSettled } from '@/lib/backend/logger';
 
@@ -41,7 +42,7 @@ export const POST = withApiHandler(async (req: NextRequest, { params }: Params) 
 
     const validation = SettleRequestSchema.safeParse(body);
     if (!validation.success) {
-        throw new ValidationError('Invalid request data', validation.error.errors);
+        throw validationErrorFromZod(validation.error);
     }
 
     const { callerAddress } = validation.data;
