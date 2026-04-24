@@ -9,9 +9,9 @@ describe('GET /api/health', () => {
     const result = await parseResponse(response)
 
     expect(result.status).toBe(200)
-    expect(result.data).toHaveProperty('status', 'healthy')
-    expect(result.data).toHaveProperty('timestamp')
-    expect(result.data).toHaveProperty('version')
+    expect(result.data.success).toBe(true)
+    expect(result.data.data.status).toBe('ok')
+    expect(result.data.data.timestamp).toBeDefined()
   })
 
   it('should return ISO timestamp in response', async () => {
@@ -19,17 +19,20 @@ describe('GET /api/health', () => {
     const response = await GET(request)
     const result = await parseResponse(response)
 
-    // Verify timestamp is valid ISO string
-    const timestamp = new Date(result.data.timestamp)
+    const timestamp = new Date(result.data.data.timestamp)
     expect(timestamp).toBeInstanceOf(Date)
     expect(timestamp.toString()).not.toBe('Invalid Date')
   })
 
-  it('should return version in response', async () => {
+  it('should include security headers', async () => {
     const request = createMockRequest('http://localhost:3000/api/health')
     const response = await GET(request)
-    const result = await parseResponse(response)
+    const headers = response.headers
 
-    expect(result.data.version).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(headers.get('Content-Security-Policy')).toBe("default-src 'self'")
+    expect(headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(headers.get('X-Frame-Options')).toBe('DENY')
+    expect(headers.get('X-XSS-Protection')).toBe('1; mode=block')
+    expect(headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin')
   })
 })

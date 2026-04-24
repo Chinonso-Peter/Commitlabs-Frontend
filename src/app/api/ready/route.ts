@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { logger } from '@/lib/backend';
+import { ok } from '@/lib/backend/apiResponse';
 
 const SOROBAN_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL;
 
@@ -36,7 +38,7 @@ async function checkSorobanRpc(): Promise<{ reachable: boolean; latencyMs?: numb
   }
 }
 
-export async function GET() {
+export const GET = withApiHandler(async () => {
   logger.info('Readiness check requested');
 
   const rpc = await checkSorobanRpc();
@@ -54,5 +56,5 @@ export async function GET() {
 
   logger.info('Readiness check complete', { ready, rpc });
 
-  return NextResponse.json(body, { status: ready ? 200 : 503 });
-}
+  return ok(body, ready ? 200 : 503);
+});

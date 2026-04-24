@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { attachSecurityHeaders } from "@/utils/response";
 
 // ─── Success shape ────────────────────────────────────────────────────────────
 
@@ -55,7 +56,8 @@ export function ok<T>(
     resolvedMeta !== undefined
       ? { success: true, data, meta: resolvedMeta }
       : { success: true, data };
-  return NextResponse.json(body, { status: resolvedStatus });
+  const response = NextResponse.json(body, { status: resolvedStatus });
+  return attachSecurityHeaders(response);
 }
 
 /**
@@ -84,5 +86,6 @@ export function fail(
       ...(details !== undefined ? { details } : {}),
     },
   };
-  return NextResponse.json(body, { status });
+  const response = NextResponse.json(body, { status });
+  return attachSecurityHeaders(response);
 }
