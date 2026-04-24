@@ -22,13 +22,13 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         throw new TooManyRequestsError();
     }
 
-    // Parse and validate request body
-    let body;
-    try {
-        body = await req.json();
-    } catch (error) {
-        throw new ValidationError('Invalid JSON in request body');
-    }
+     // Parse and validate request body
+     let body;
+     try {
+         body = await req.json();
+     } catch {
+         throw new ValidationError('Invalid JSON in request body');
+     }
 
     const validation = VerifyRequestSchema.safeParse(body);
     if (!validation.success) {

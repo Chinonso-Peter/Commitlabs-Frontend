@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import Stellar from '@stellar/stellar-sdk';
+import { getCountersAdapter } from '@/lib/backend/counters/provider';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -184,6 +185,10 @@ export function verifySignatureWithNonce(request: SignatureVerificationRequest):
     // If signature is valid, consume the nonce
     if (verificationResult.valid) {
         consumeNonce(nonce);
+    } else {
+        // Increment auth failures counter on failed verification
+        const countersAdapter = getCountersAdapter();
+        void countersAdapter.incrementAuthFailures(); // Fire and forget for metrics
     }
     
     return verificationResult;

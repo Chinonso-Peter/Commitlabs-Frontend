@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
-import { ok, fail } from '@/lib/backend/apiResponse';
+import { ok } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError } from '@/lib/backend/errors';
 import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backend/auth';
 
@@ -20,13 +20,13 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         throw new TooManyRequestsError();
     }
 
-    // Parse and validate request body
-    let body;
-    try {
-        body = await req.json();
-    } catch (error) {
-        throw new ValidationError('Invalid JSON in request body');
-    }
+     // Parse and validate request body
+     let body;
+     try {
+         body = await req.json();
+     } catch {
+         throw new ValidationError('Invalid JSON in request body');
+     }
 
     const validation = NonceRequestSchema.safeParse(body);
     if (!validation.success) {

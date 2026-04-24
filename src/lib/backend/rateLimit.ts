@@ -1,3 +1,5 @@
+import { getCountersAdapter } from '@/lib/backend/counters/provider';
+
 /**
  * Rate Limiting Strategy Strategy for Commitlabs Public API Endpoints.
  * 
@@ -37,7 +39,21 @@ export async function checkRateLimit(key: string, routeId: string): Promise<bool
     // 2. define limits per routeId (e.g., 5 requests per minute for auth).
     // 3. Increment counter and check against window.
 
-    console.warn(`[RateLimit] Production TODO: Rate limiting not yet implemented for ${routeId}. Defaulting to allow.`);
+    // For now, we'll implement a simple counter increment for demonstration
+    // In a real implementation, this would be part of the actual rate limiting logic
+    const countersAdapter = getCountersAdapter();
+    
+    // Simulate rate limiting decision (for now, always allow but increment counter if would be blocked)
+    // In a real implementation, you would check if the request is actually rate limited
+    const isAllowed = true; // Placeholder - replace with actual rate limit check
+    
+    if (!isAllowed) {
+        // Increment the rate limit blocks counter
+        await countersAdapter.incrementRateLimitBlocks();
+        console.warn(`[RateLimit] Production TODO: Rate limiting not yet implemented for ${routeId}. Defaulting to allow.`);
+        return false;
+    }
 
+    console.warn(`[RateLimit] Production TODO: Rate limiting not yet implemented for ${routeId}. Defaulting to allow.`);
     return true;
 }
