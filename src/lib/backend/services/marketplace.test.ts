@@ -220,4 +220,42 @@ describe('MarketplaceService', () => {
       expect(listing).toBeNull();
     });
   });
+
+  describe('getMarketplaceStats', () => {
+    it('should return aggregated metrics based on mock listings', async () => {
+      const stats = await marketplaceService.getMarketplaceStats();
+
+      expect(stats).toBeDefined();
+      expect(stats.activeListings).toBe(6);
+      expect(stats.averageYield).toBeGreaterThan(0);
+      expect(stats.medianPrice).toBeGreaterThan(0);
+      expect(stats.typeBreakdown).toHaveProperty('Safe');
+      expect(stats.typeBreakdown).toHaveProperty('Balanced');
+      expect(stats.typeBreakdown).toHaveProperty('Aggressive');
+    });
+
+    it('should calculate the median price correctly for the current mock data', async () => {
+      const stats = await marketplaceService.getMarketplaceStats();
+      // Mock Prices: 52000, 105000, 262000, 76500, 155000, 525000
+      // Sorted: 52000, 76500, 105000, 155000, 262000, 525000
+      // Median (even): (105000 + 155000) / 2 = 130000
+      expect(stats.medianPrice).toBe(130000);
+    });
+
+    it('should calculate the average yield correctly', async () => {
+      const stats = await marketplaceService.getMarketplaceStats();
+      // Mock Yields: 5.2, 12.5, 18.7, 4.8, 11.3, 22.1
+      // Sum: 74.6
+      // Avg: 74.6 / 6 = 12.4333... -> 12.43
+      expect(stats.averageYield).toBe(12.43);
+    });
+
+    it('should provide a correct type breakdown', async () => {
+      const stats = await marketplaceService.getMarketplaceStats();
+      // Mock Types: Safe (2), Balanced (2), Aggressive (2)
+      expect(stats.typeBreakdown.Safe).toBe(2);
+      expect(stats.typeBreakdown.Balanced).toBe(2);
+      expect(stats.typeBreakdown.Aggressive).toBe(2);
+    });
+  });
 });
