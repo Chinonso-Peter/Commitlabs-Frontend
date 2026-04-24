@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server'
 import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { withApiHandler } from "@/lib/backend/withApiHandler";
 import { ok, fail } from "@/lib/backend/apiResponse";
-import { TooManyRequestsError } from "@/lib/backend/errors";
+import { TooManyRequestsError, BadRequestError } from "@/lib/backend/errors";
 import { getUserCommitmentsFromChain, createCommitmentOnChain } from "@/lib/backend/services/contracts";
+import { parsePositiveInt, parseBps, parseAmountWithMin } from "@/lib/backend/parsing";
 
 interface CreateCommitmentRequestBody {
   ownerAddress: string;
@@ -86,7 +87,7 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     metadata,
   } = body;
 
-  // Basic validation
+  // Basic validation using safe parsing utilities
   if (!ownerAddress || typeof ownerAddress !== "string") {
     return fail("Invalid ownerAddress", "BAD_REQUEST", 400);
   }
@@ -95,15 +96,33 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     return fail("Invalid asset", "BAD_REQUEST", 400);
   }
 
-  if (!amount || isNaN(Number(amount))) {
+  let parsedAmount: number;
+  try {
+    parsedAmount = parseAmountWithMin(amount, 1);
+  } catch (e) {
+    if (e instanceof BadRequestError) {
+      return fail(e.message, "BAD_REQUEST", 400);
+    }
     return fail("Invalid amount", "BAD_REQUEST", 400);
   }
 
-  if (!durationDays || durationDays <= 0) {
+  let parsedDuration: number;
+  try {
+    parsedDuration = parsePositiveInt(durationDays, { max: 365 * 10 });
+  } catch (e) {
+    if (e instanceof BadRequestError) {
+      return fail(e.message, "BAD_REQUEST", 400);
+    }
     return fail("Invalid durationDays", "BAD_REQUEST", 400);
   }
 
-  if (maxLossBps == null || maxLossBps < 0) {
+  let parsedMaxLossBps: number;
+  try {
+    parsedMaxLossBps = parseBps(maxLossBps, { allowZero: true });
+  } catch (e) {
+    if (e instanceof BadRequestError) {
+      return fail(e.message, "BAD_REQUEST", 400);
+    }
     return fail("Invalid maxLossBps", "BAD_REQUEST", 400);
   }
 
@@ -111,9 +130,9 @@ export const POST = withApiHandler(async (req: NextRequest) => {
   const result = await createCommitmentOnChain({
     ownerAddress,
     asset,
-    amount,
-    durationDays,
-    maxLossBps,
+    amount: parsedAmount,
+    durationDays: parsedDuration,
+    maxLossBps: parsedMaxLossBps,
     metadata,
   });
 

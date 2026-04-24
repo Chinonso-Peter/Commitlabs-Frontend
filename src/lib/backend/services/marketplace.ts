@@ -1,5 +1,6 @@
 import { logInfo } from "../logger";
-import { ConflictError, NotFoundError, ValidationError } from "../errors";
+import { ConflictError, NotFoundError, ValidationError, BadRequestError } from "../errors";
+import { parseAmountWithMin } from "../parsing";
 import type {
   MarketplaceListing,
   CreateListingRequest,
@@ -266,9 +267,14 @@ class MarketplaceService {
     if (!request.price || typeof request.price !== "string") {
       errors.push("price is required and must be a string");
     } else {
-      const priceNum = Number.parseFloat(request.price);
-      if (Number.isNaN(priceNum) || priceNum <= 0) {
-        errors.push("price must be a positive number");
+      try {
+        parseAmountWithMin(request.price, 1);
+      } catch (e) {
+        if (e instanceof BadRequestError) {
+          errors.push("price must be a positive number");
+        } else {
+          errors.push("price must be a valid number");
+        }
       }
     }
 
