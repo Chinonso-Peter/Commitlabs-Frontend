@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
-import { TooManyRequestsError, ValidationError, NotFoundError, ConflictError } from '@/lib/backend/errors';
-import { settleCommitmentOnChain } from '@/lib/backend/services/contracts';
+import { TooManyRequestsError, ValidationError, NotFoundError, ConflictError, ForbiddenError, UnauthorizedError, BadRequestError } from '@/lib/backend/errors';
+import { settleCommitmentOnChain, getCommitmentFromChain } from '@/lib/backend/services/contracts';
 import { logCommitmentSettled } from '@/lib/backend/logger';
 
 // Request validation schema
 const SettleRequestSchema = z.object({
-    callerAddress: z.string().optional(),
+    callerAddress: z.string().min(5, 'Invalid caller address').optional(),
 });
 
 interface Params {
@@ -35,7 +35,7 @@ export const POST = withApiHandler(async (req: NextRequest, { params }: Params) 
     let body;
     try {
         body = await req.json();
-    } catch (error) {
+    } catch {
         throw new ValidationError('Invalid JSON in request body');
     }
 
@@ -46,7 +46,37 @@ export const POST = withApiHandler(async (req: NextRequest, { params }: Params) 
 
     const { callerAddress } = validation.data;
 
+    // Authenticate: callerAddress is required for settlement
+    if (!callerAddress) {
+        throw new UnauthorizedError('Authentication required. Provide callerAddress in request body.');
+    }
+
     try {
+        // Read-before-write to validate eligibility
+        const commitment = await getCommitmentFromChain(id);
+
+        if (!commitment || commitment.status === 'UNKNOWN') {
+            throw new NotFoundError('Commitment', { commitmentId: id });
+        }
+
+        // Enforce actor matches owner (session principal)
+        if (commitment.ownerAddress && commitment.ownerAddress !== callerAddress) {
+            throw new ForbiddenError('You do not have permission to settle this commitment.');
+        }
+
+        // Handle invalid states - commitment must be in valid state to settle
+        if (commitment.status === 'SETTLED') {
+            throw new ConflictError('Commitment has already been settled.');
+        }
+
+        if (commitment.status === 'VIOLATED') {
+            throw new BadRequestError('Commitment has been violated and cannot be settled.');
+        }
+
+        if (commitment.status === 'EARLY_EXIT') {
+            throw new BadRequestError('Commitment has exited early and cannot be settled.');
+        }
+
         // Call the settlement function
         const settlementResult = await settleCommitmentOnChain({
             commitmentId: id,
@@ -86,7 +116,9 @@ export const POST = withApiHandler(async (req: NextRequest, { params }: Params) 
         if (
             error instanceof ValidationError ||
             error instanceof NotFoundError ||
-            error instanceof ConflictError
+            error instanceof ConflictError ||
+            error instanceof ForbiddenError ||
+            error instanceof UnauthorizedError
         ) {
             throw error;
         }
