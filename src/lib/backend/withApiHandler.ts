@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { logWarn, logError } from './logger';
+import { getOrCreateRequestId, logWarn, logError } from './logger';
 import { fail } from './apiResponse';
 import { ApiError } from './errors';
 
@@ -33,8 +33,11 @@ export function withApiHandler(handler: RouteHandler): RouteHandler {
         req: NextRequest,
         context: { params: Record<string, string> }
     ): Promise<NextResponse> {
+        const requestId = getOrCreateRequestId(req);
         try {
-            return await handler(req, context);
+            const response = await handler(req, context);
+            response.headers.set('x-request-id', requestId);
+            return response;
         } catch (err: unknown) {
             if (err instanceof ApiError) {
                 logWarn(req, '[API] Handled error', {
@@ -45,7 +48,9 @@ export function withApiHandler(handler: RouteHandler): RouteHandler {
                     method: req.method,
                 });
 
-                return fail(err.code, err.message, err.details, err.statusCode);
+                const response = fail(err.code, err.message, err.details, err.statusCode);
+                response.headers.set('x-request-id', requestId);
+                return response;
             }
 
             const error = err instanceof Error ? err : new Error(String(err));
@@ -55,12 +60,15 @@ export function withApiHandler(handler: RouteHandler): RouteHandler {
                 method: req.method,
             });
 
-            return fail(
+            const response = fail(
                 'INTERNAL_ERROR',
                 'An unexpected error occurred. Please try again later.',
                 undefined,
                 500
             );
+
+            response.headers.set('x-request-id', requestId);
+            return response;
         }
     };
 }
