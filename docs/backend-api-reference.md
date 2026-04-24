@@ -9,6 +9,52 @@ an example response.  All endpoints return JSON.
 
 ---
 
+## `GET /api/marketplace/featured`
+
+Returns a cacheable, deterministic subset of public marketplace listings for
+featured carousel discovery.
+
+- **Authentication**: none
+- **Selection criteria**:
+  - `complianceScore >= 85`
+  - `maxLoss <= 8`
+  - ordered by `complianceScore DESC`, `currentYield DESC`, `price ASC`,
+    `listingId ASC`
+  - limited to 4 results
+- **Response headers**:
+  - `Cache-Control: public, max-age=300, s-maxage=300, stale-while-revalidate=600`
+  - standard security headers
+
+### Example
+
+```bash
+curl http://localhost:3000/api/marketplace/featured
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "listings": [
+      {
+        "listingId": "LST-001",
+        "commitmentId": "CMT-001",
+        "type": "Safe",
+        "amount": 50000,
+        "remainingDays": 25,
+        "maxLoss": 2,
+        "currentYield": 5.2,
+        "complianceScore": 95,
+        "price": 52000
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+---
+
 ## `POST /api/commitments`
 
 Creates a new commitment.  In the stub implementation, no persistence occurs;
