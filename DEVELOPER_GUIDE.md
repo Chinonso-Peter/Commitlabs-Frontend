@@ -48,6 +48,41 @@ Welcome to the CommitLabs Frontend developer guide. This document provides guide
 -   **CSS Modules**: Use CSS Modules for complex, custom animations or specific component isolation that Tailwind handles less elegantly.
 -   **Responsiveness**: Build mobile-first using Tailwind's breakpoints (`sm:`, `md:`, `lg:`).
 
+## 🧹 Linting
+
+The project uses ESLint with the Next.js + TypeScript ruleset.
+
+**Configuration**: `.eslintrc.json` (ESLint v8 legacy format, compatible with `eslint-config-next`)
+
+```json
+{
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ]
+  }
+}
+```
+
+**Rules in effect:**
+- `next/core-web-vitals` — Next.js recommended rules including React Hooks and import hygiene
+- `next/typescript` — TypeScript-aware rules (no-unused-vars, no-explicit-any, etc.)
+- Unused variables/args/caught errors prefixed with `_` are intentionally ignored (e.g. `_error`, `_token`)
+
+**Running lint:**
+
+```bash
+pnpm lint
+```
+
+Fix all errors before committing. Warnings are informational but should be addressed where practical.
+
 ## 🧪 Testing Procedures
 
 *(Note: Testing framework setup is currently in progress)*

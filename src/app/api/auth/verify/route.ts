@@ -26,7 +26,7 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     let body;
     try {
         body = await req.json();
-    } catch (error) {
+    } catch (_error) {
         throw new ValidationError('Invalid JSON in request body');
     }
 

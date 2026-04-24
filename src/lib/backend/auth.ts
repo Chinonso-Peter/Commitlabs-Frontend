@@ -213,7 +213,7 @@ export function createSessionToken(address: string): string {
 /**
  * TODO: Verify a session token.
  */
-export function verifySessionToken(token: string): { valid: boolean; address?: string } {
+export function verifySessionToken(_token: string): { valid: boolean; address?: string } {
     // TODO: Implement JWT verification or session validation
     // For now, return placeholder
     return { valid: false };
