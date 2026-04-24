@@ -1,15 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { POST } from './route';
+import { GET, POST } from './route';
 import { NextRequest } from 'next/server';
-import { marketplaceService } from '@/lib/backend/services/marketplace';
+import { marketplaceService, listMarketplaceListings, isMarketplaceSortBy } from '@/lib/backend/services/marketplace';
 import { ValidationError, ConflictError } from '@/lib/backend/errors';
-import type { MarketplaceListing } from '@/lib/types/domain';
+import { checkRateLimit } from '@/lib/backend/rateLimit';
+import type { MarketplaceListing, MarketplacePublicListing } from '@/lib/types/domain';
 
-// Mock the marketplace service
+// Mock the marketplace service and related functions
 vi.mock('@/lib/backend/services/marketplace', () => ({
   marketplaceService: {
     createListing: vi.fn(),
   },
+  listMarketplaceListings: vi.fn(),
+  isMarketplaceSortBy: vi.fn(),
+  getMarketplaceSortKeys: vi.fn(() => ['price', 'amount']),
+}));
+
+// Mock rate limiting
+vi.mock('@/lib/backend/rateLimit', () => ({
+  checkRateLimit: vi.fn(),
 }));
 
 describe('POST /api/marketplace/listings', () => {
@@ -144,5 +153,114 @@ describe('POST /api/marketplace/listings', () => {
     expect(response.status).toBe(409);
     expect(data.success).toBe(false);
     expect(data.error.code).toBe('CONFLICT');
+  });
+});
+
+describe('GET /api/marketplace/listings', () => {
+  const mockPublicListings: MarketplacePublicListing[] = [
+    {
+      listingId: 'LST-001',
+      commitmentId: 'CMT-001',
+      type: 'Safe',
+      amount: 50000,
+      remainingDays: 25,
+      maxLoss: 2,
+      currentYield: 5.2,
+      complianceScore: 95,
+      price: 52000,
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(checkRateLimit).mockResolvedValue(true);
+    vi.mocked(listMarketplaceListings).mockResolvedValue(mockPublicListings);
+    vi.mocked(isMarketplaceSortBy).mockImplementation((val) => ['price', 'amount'].includes(val));
+  });
+
+  it('should return listings with cards successfully', async () => {
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data.listings).toEqual(mockPublicListings);
+    expect(data.data.cards).toHaveLength(1);
+    expect(data.data.cards[0].amount).toBe('$50,000');
+    expect(data.data.total).toBe(1);
+  });
+
+  it('should parse filters correctly and map type case-insensitively', async () => {
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings?type=SAFE&minAmount=1000&maxAmount=5000&sortBy=price');
+    await GET(request);
+
+    expect(listMarketplaceListings).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'Safe',
+      minAmount: 1000,
+      maxAmount: 5000,
+      sortBy: 'price',
+    }));
+  });
+
+  it('should return 400 for invalid type', async () => {
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings?type=invalid');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.success).toBe(false);
+    expect(data.error.code).toBe('VALIDATION_ERROR');
+    expect(data.error.message).toContain("Invalid 'type' query param");
+  });
+
+  it('should return 400 for non-numeric params', async () => {
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings?minAmount=abc');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe('VALIDATION_ERROR');
+    expect(data.error.message).toContain("Invalid 'minAmount' query param");
+  });
+
+  it('should return 400 when minAmount > maxAmount', async () => {
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings?minAmount=5000&maxAmount=1000');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("cannot be greater than");
+  });
+
+  it('should return 400 for invalid sortBy', async () => {
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings?sortBy=invalid_key');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("Invalid 'sortBy' query param");
+  });
+
+  it('should return 429 when rate limited', async () => {
+    vi.mocked(checkRateLimit).mockResolvedValue(false);
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(data.error).toBe('Too many requests');
+  });
+
+  it('should return 500 for unexpected errors', async () => {
+    vi.mocked(listMarketplaceListings).mockRejectedValue(new Error('Database explosion'));
+    const request = new NextRequest('http://localhost:3000/api/marketplace/listings');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.success).toBe(false);
+    expect(data.error.code).toBe('INTERNAL_ERROR');
+    expect(data.error.message).toBe('Database explosion');
   });
 });
