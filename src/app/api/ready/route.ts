@@ -1,7 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/backend';
+import {
+  applyCorsPolicy,
+  createCorsOptionsHandler,
+  enforceCorsRequestPolicy,
+  toCorsErrorResponse,
+  type CorsRoutePolicy,
+} from '@/lib/backend/cors';
 
 const SOROBAN_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL;
+const READY_CORS_POLICY = {
+  GET: { access: 'public' },
+} satisfies CorsRoutePolicy;
 
 async function checkSorobanRpc(): Promise<{ reachable: boolean; latencyMs?: number; error?: string }> {
   if (!SOROBAN_RPC_URL) {
@@ -36,7 +46,15 @@ async function checkSorobanRpc(): Promise<{ reachable: boolean; latencyMs?: numb
   }
 }
 
-export async function GET() {
+export const OPTIONS = createCorsOptionsHandler(READY_CORS_POLICY);
+
+export async function GET(request: NextRequest) {
+  try {
+    enforceCorsRequestPolicy(request, READY_CORS_POLICY);
+  } catch (error) {
+    return toCorsErrorResponse(error);
+  }
+
   logger.info('Readiness check requested');
 
   const rpc = await checkSorobanRpc();
@@ -54,5 +72,6 @@ export async function GET() {
 
   logger.info('Readiness check complete', { ready, rpc });
 
-  return NextResponse.json(body, { status: ready ? 200 : 503 });
+  const response = NextResponse.json(body, { status: ready ? 200 : 503 });
+  return applyCorsPolicy(request, response, READY_CORS_POLICY);
 }

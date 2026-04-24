@@ -1,9 +1,15 @@
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+const SEED_CORS_POLICY = {
+    POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(SEED_CORS_POLICY);
 
 export const POST = withApiHandler(async () => {
     // Only allow this route in development mode
@@ -18,4 +24,4 @@ export const POST = withApiHandler(async () => {
         const msg = e instanceof Error ? e.message : String(e);
         return ok({ message: 'Failed to seed mock data', error: msg }, 500);
     }
-});
+}, { cors: SEED_CORS_POLICY });

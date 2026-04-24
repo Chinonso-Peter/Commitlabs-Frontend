@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { ok } from '@/lib/backend/apiResponse';
 import { NotFoundError } from '@/lib/backend/errors';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { contractAddresses } from '@/utils/soroban';
 
@@ -80,6 +81,12 @@ function getDaysRemaining(expiresAt: string): number {
     return Math.max(0, Math.ceil((expiresAtMs - nowMs) / msPerDay));
 }
 
+const COMMITMENT_DETAIL_CORS_POLICY = {
+    GET: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(COMMITMENT_DETAIL_CORS_POLICY);
+
 export const GET = withApiHandler(async (
     _req: NextRequest,
     context: { params: Record<string, string> }
@@ -112,4 +119,4 @@ export const GET = withApiHandler(async (
     };
 
     return ok(response);
-});
+}, { cors: COMMITMENT_DETAIL_CORS_POLICY });

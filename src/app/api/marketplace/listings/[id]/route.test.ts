@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DELETE } from './route';
+import { DELETE, OPTIONS } from './route';
 import { NextRequest } from 'next/server';
 import { marketplaceService } from '@/lib/backend/services/marketplace';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/backend/errors';
@@ -14,6 +14,7 @@ vi.mock('@/lib/backend/services/marketplace', () => ({
 describe('DELETE /api/marketplace/listings/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.COMMITLABS_FIRST_PARTY_ORIGINS = 'https://app.commitlabs.test';
   });
 
   it('should cancel a listing successfully', async () => {
@@ -26,6 +27,9 @@ describe('DELETE /api/marketplace/listings/[id]', () => {
       `http://localhost:3000/api/marketplace/listings/${listingId}?sellerAddress=${sellerAddress}`,
       {
         method: 'DELETE',
+        headers: {
+          Origin: 'https://app.commitlabs.test',
+        },
       }
     );
 
@@ -33,6 +37,10 @@ describe('DELETE /api/marketplace/listings/[id]', () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://app.commitlabs.test'
+    );
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
     expect(data.success).toBe(true);
     expect(data.data.listingId).toBe(listingId);
     expect(data.data.cancelled).toBe(true);
@@ -148,5 +156,52 @@ describe('DELETE /api/marketplace/listings/[id]', () => {
     expect(response.status).toBe(409);
     expect(data.success).toBe(false);
     expect(data.error.code).toBe('CONFLICT');
+  });
+
+  it('should reject disallowed origins for DELETE', async () => {
+    const listingId = 'listing_1_1234567890';
+    const sellerAddress = 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+
+    const request = new NextRequest(
+      `http://localhost:3000/api/marketplace/listings/${listingId}?sellerAddress=${sellerAddress}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Origin: 'https://evil.example',
+        },
+      }
+    );
+
+    const response = await DELETE(request, { params: { id: listingId } });
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error.code).toBe('FORBIDDEN');
+    expect(marketplaceService.cancelListing).not.toHaveBeenCalled();
+  });
+
+  it('should answer DELETE preflight requests', async () => {
+    const request = new NextRequest(
+      'http://localhost:3000/api/marketplace/listings/listing_1_1234567890',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://app.commitlabs.test',
+          'Access-Control-Request-Method': 'DELETE',
+          'Access-Control-Request-Headers': 'Content-Type',
+        },
+      }
+    );
+
+    const response = await OPTIONS(request);
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://app.commitlabs.test'
+    );
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe(
+      'DELETE, OPTIONS'
+    );
   });
 });

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { ok } from '@/lib/backend/apiResponse';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
-import { ValidationError } from '@/lib/backend/errors';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
+import { TooManyRequestsError, ValidationError } from '@/lib/backend/errors';
 import {
     getMarketplaceSortKeys,
     isMarketplaceSortBy,
@@ -24,6 +25,13 @@ interface ParseResult {
     sortBy?: string;
 }
 
+const MARKETPLACE_LISTINGS_CORS_POLICY = {
+    GET: { access: 'public' },
+    POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(MARKETPLACE_LISTINGS_CORS_POLICY);
+
 function toMarketplaceCard(listing: MarketplacePublicListing) {
     return {
         id: listing.listingId,
@@ -43,7 +51,7 @@ function parseNumber(searchParams: URLSearchParams, key: string): number | undef
 
     const parsed = Number(raw);
     if (!Number.isFinite(parsed)) {
-        throw new Error(`Invalid '${key}' query param. Expected a number.`);
+        throw new ValidationError(`Invalid '${key}' query param. Expected a number.`);
     }
 
     return parsed;
@@ -61,7 +69,7 @@ function parseType(searchParams: URLSearchParams): MarketplaceCommitmentType | u
     };
 
     if (!(normalized in mapping)) {
-        throw new Error(`Invalid 'type' query param. Allowed values: ${COMMITMENT_TYPES.join(', ')}.`);
+        throw new ValidationError(`Invalid 'type' query param. Allowed values: ${COMMITMENT_TYPES.join(', ')}.`);
     }
 
     return mapping[normalized];
@@ -72,12 +80,12 @@ function parseQuery(searchParams: URLSearchParams): ParseResult {
     const maxAmount = parseNumber(searchParams, 'maxAmount');
 
     if (minAmount !== undefined && maxAmount !== undefined && minAmount > maxAmount) {
-        throw new Error("Invalid amount filter. 'minAmount' cannot be greater than 'maxAmount'.");
+        throw new ValidationError("Invalid amount filter. 'minAmount' cannot be greater than 'maxAmount'.");
     }
 
     const sortBy = searchParams.get('sortBy') ?? undefined;
     if (sortBy && !isMarketplaceSortBy(sortBy)) {
-        throw new Error(`Invalid 'sortBy' query param. Allowed values: ${getMarketplaceSortKeys().join(', ')}.`);
+        throw new ValidationError(`Invalid 'sortBy' query param. Allowed values: ${getMarketplaceSortKeys().join(', ')}.`);
     }
 
     return {
@@ -90,40 +98,24 @@ function parseQuery(searchParams: URLSearchParams): ParseResult {
     };
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
+export const GET = withApiHandler(async (req: NextRequest) => {
     const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
     const isAllowed = await checkRateLimit(ip, 'api/marketplace/listings');
 
     if (!isAllowed) {
-        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+        throw new TooManyRequestsError();
     }
 
-    try {
-        const { searchParams } = new URL(req.url);
-        const filters = parseQuery(searchParams);
-        const listings = await listMarketplaceListings(filters);
+    const { searchParams } = new URL(req.url);
+    const filters = parseQuery(searchParams);
+    const listings = await listMarketplaceListings(filters);
 
-        return ok({
-            listings,
-            cards: listings.map(toMarketplaceCard),
-            total: listings.length,
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to list marketplace listings.';
-        const isValidation = message.startsWith('Invalid');
-
-        return NextResponse.json(
-            {
-                success: false,
-                error: {
-                    code: isValidation ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
-                    message,
-                },
-            },
-            { status: isValidation ? 400 : 500 }
-        );
-    }
-}
+    return ok({
+        listings,
+        cards: listings.map(toMarketplaceCard),
+        total: listings.length,
+    });
+}, { cors: MARKETPLACE_LISTINGS_CORS_POLICY });
 
 export const POST = withApiHandler(async (req: NextRequest) => {
         let body: unknown;
@@ -146,4 +138,4 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         };
 
         return ok(response, 201);
-});
+}, { cors: MARKETPLACE_LISTINGS_CORS_POLICY });

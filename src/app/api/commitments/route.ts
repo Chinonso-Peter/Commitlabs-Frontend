@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { withApiHandler } from "@/lib/backend/withApiHandler";
 import { ok, fail } from "@/lib/backend/apiResponse";
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { TooManyRequestsError } from "@/lib/backend/errors";
 import { getUserCommitmentsFromChain, createCommitmentOnChain } from "@/lib/backend/services/contracts";
 
@@ -14,6 +15,12 @@ interface CreateCommitmentRequestBody {
   metadata?: Record<string, unknown>;
 }
 
+const COMMITMENTS_CORS_POLICY = {
+  GET: { access: 'first-party' },
+  POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(COMMITMENTS_CORS_POLICY);
 
 export const GET = withApiHandler(async (req: NextRequest) => {
   const { searchParams } = new URL(req.url);
@@ -65,7 +72,7 @@ export const GET = withApiHandler(async (req: NextRequest) => {
     pageSize,
     total: mapped.length, // TODO: optimize if chain indexing improves
   });
-});
+}, { cors: COMMITMENTS_CORS_POLICY });
 
 export const POST = withApiHandler(async (req: NextRequest) => {
   const ip = req.ip ?? req.headers.get("x-forwarded-for") ?? "anonymous";
@@ -118,4 +125,4 @@ export const POST = withApiHandler(async (req: NextRequest) => {
   });
 
   return ok(result, 201);
-});
+}, { cors: COMMITMENTS_CORS_POLICY });

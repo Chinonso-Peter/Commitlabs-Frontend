@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { ValidationError } from '@/lib/backend/errors';
 import { marketplaceService } from '@/lib/backend/services/marketplace';
 import type { CancelListingResponse } from '@/types/marketplace';
@@ -13,6 +14,12 @@ import type { CancelListingResponse } from '@/types/marketplace';
  * Query parameters:
  *   sellerAddress: string (required) - Address of the seller cancelling the listing
  */
+const MARKETPLACE_LISTING_DETAIL_CORS_POLICY = {
+  DELETE: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(MARKETPLACE_LISTING_DETAIL_CORS_POLICY);
+
 export const DELETE = withApiHandler(
   async (req: NextRequest, { params }: { params: Record<string, string> }) => {
     const listingId = params.id;
@@ -39,5 +46,6 @@ export const DELETE = withApiHandler(
     };
 
     return ok(response);
-  }
+  },
+  { cors: MARKETPLACE_LISTING_DETAIL_CORS_POLICY }
 );

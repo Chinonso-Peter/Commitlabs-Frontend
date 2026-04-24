@@ -1,12 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { logWarn, logError } from './logger';
 import { fail } from './apiResponse';
 import { ApiError } from './errors';
+import {
+    applyCorsPolicy,
+    enforceCorsRequestPolicy,
+    type CorsRoutePolicy,
+} from './cors';
 
 type RouteHandler = (
     req: NextRequest,
     context: { params: Record<string, string> }
-) => Promise<NextResponse>;
+) => Promise<Response>;
+
+interface ApiHandlerOptions {
+    cors?: CorsRoutePolicy;
+}
 
 /**
  * withApiHandler
@@ -28,13 +37,21 @@ type RouteHandler = (
  * });
  * ```
  */
-export function withApiHandler(handler: RouteHandler): RouteHandler {
+export function withApiHandler(
+    handler: RouteHandler,
+    options: ApiHandlerOptions = {}
+): RouteHandler {
     return async function wrappedHandler(
         req: NextRequest,
-        context: { params: Record<string, string> }
-    ): Promise<NextResponse> {
+        context: { params: Record<string, string> } = { params: {} }
+    ): Promise<Response> {
         try {
-            return await handler(req, context);
+            if (options.cors) {
+                enforceCorsRequestPolicy(req, options.cors);
+            }
+
+            const response = await handler(req, context);
+            return options.cors ? applyCorsPolicy(req, response, options.cors) : response;
         } catch (err: unknown) {
             if (err instanceof ApiError) {
                 logWarn(req, '[API] Handled error', {
@@ -45,7 +62,8 @@ export function withApiHandler(handler: RouteHandler): RouteHandler {
                     method: req.method,
                 });
 
-                return fail(err.code, err.message, err.details, err.statusCode);
+                const response = fail(err.code, err.message, err.details, err.statusCode);
+                return options.cors ? applyCorsPolicy(req, response, options.cors) : response;
             }
 
             const error = err instanceof Error ? err : new Error(String(err));
@@ -55,12 +73,13 @@ export function withApiHandler(handler: RouteHandler): RouteHandler {
                 method: req.method,
             });
 
-            return fail(
+            const response = fail(
                 'INTERNAL_ERROR',
                 'An unexpected error occurred. Please try again later.',
                 undefined,
                 500
             );
+            return options.cors ? applyCorsPolicy(req, response, options.cors) : response;
         }
     };
 }

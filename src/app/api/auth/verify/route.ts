@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { TooManyRequestsError, ValidationError, UnauthorizedError } from '@/lib/backend/errors';
 import { verifySignatureWithNonce, createSessionToken } from '@/lib/backend/auth';
 
@@ -12,6 +13,12 @@ const VerifyRequestSchema = z.object({
     signature: z.string().min(1, 'Signature is required'),
     message: z.string().min(1, 'Message is required'),
 });
+
+const AUTH_VERIFY_CORS_POLICY = {
+    POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(AUTH_VERIFY_CORS_POLICY);
 
 export const POST = withApiHandler(async (req: NextRequest) => {
     const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
@@ -60,4 +67,4 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         sessionToken,
         sessionType: 'placeholder', // Indicates this is a placeholder implementation
     });
-});
+}, { cors: AUTH_VERIFY_CORS_POLICY });

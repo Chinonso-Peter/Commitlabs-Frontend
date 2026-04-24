@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
-import { ok, fail } from '@/lib/backend/apiResponse';
+import { ok } from '@/lib/backend/apiResponse';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { TooManyRequestsError, ValidationError } from '@/lib/backend/errors';
 import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backend/auth';
 
@@ -10,6 +11,12 @@ import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backe
 const NonceRequestSchema = z.object({
     address: z.string().min(1, 'Address is required'),
 });
+
+const AUTH_NONCE_CORS_POLICY = {
+    POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(AUTH_NONCE_CORS_POLICY);
 
 export const POST = withApiHandler(async (req: NextRequest) => {
     const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
@@ -49,4 +56,4 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         message: challengeMessage,
         expiresAt: nonceRecord.expiresAt.toISOString(),
     });
-});
+}, { cors: AUTH_NONCE_CORS_POLICY });

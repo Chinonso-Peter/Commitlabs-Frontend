@@ -10,6 +10,7 @@ import {
   ValidationError,
   TooManyRequestsError,
 } from '@/lib/backend/errors';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
 import { getMockData } from '@/lib/backend/mockDb';
@@ -23,6 +24,13 @@ const ATTESTATION_TYPES = [
 ] as const;
 
 export type AttestationType = (typeof ATTESTATION_TYPES)[number];
+
+const ATTESTATIONS_CORS_POLICY = {
+  GET: { access: 'public' },
+  POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(ATTESTATIONS_CORS_POLICY);
 
 function isAttestationType(value: unknown): value is AttestationType {
   return typeof value === 'string' && ATTESTATION_TYPES.includes(value as AttestationType);
@@ -168,7 +176,7 @@ export const GET = withApiHandler(async (req: NextRequest) => {
   const { attestations } = await getMockData();
 
   return ok({ attestations }, 200);
-});
+}, { cors: ATTESTATIONS_CORS_POLICY });
 
 export const POST = withApiHandler(async (req: NextRequest) => {
   const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
@@ -233,4 +241,4 @@ export const POST = withApiHandler(async (req: NextRequest) => {
       status: normalized.status,
     });
   }
-});
+}, { cors: ATTESTATIONS_CORS_POLICY });

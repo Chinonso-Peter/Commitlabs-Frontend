@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
+import { createCorsOptionsHandler, type CorsRoutePolicy } from '@/lib/backend/cors';
 import { TooManyRequestsError, ValidationError, NotFoundError, ConflictError } from '@/lib/backend/errors';
 import { settleCommitmentOnChain } from '@/lib/backend/services/contracts';
 import { logCommitmentSettled } from '@/lib/backend/logger';
@@ -15,6 +16,12 @@ const SettleRequestSchema = z.object({
 interface Params {
     params: { id: string };
 }
+
+const COMMITMENT_SETTLE_CORS_POLICY = {
+    POST: { access: 'first-party' },
+} satisfies CorsRoutePolicy;
+
+export const OPTIONS = createCorsOptionsHandler(COMMITMENT_SETTLE_CORS_POLICY);
 
 export const POST = withApiHandler(async (req: NextRequest, { params }: Params) => {
     const { id } = params;
@@ -94,4 +101,4 @@ export const POST = withApiHandler(async (req: NextRequest, { params }: Params) 
         // Unknown errors will be caught by withApiHandler
         throw error;
     }
-});
+}, { cors: COMMITMENT_SETTLE_CORS_POLICY });

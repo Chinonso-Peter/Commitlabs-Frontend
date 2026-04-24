@@ -30,3 +30,15 @@ export {
   HTTP_ERROR_CODES,
 } from "./errors";
 export { withApiHandler } from "./withApiHandler";
+export {
+  applyCorsPolicy,
+  createCorsOptionsHandler,
+  enforceCorsRequestPolicy,
+  toCorsErrorResponse,
+} from "./cors";
+export type {
+  CorsAccess,
+  CorsMethod,
+  CorsMethodPolicy,
+  CorsRoutePolicy,
+} from "./cors";

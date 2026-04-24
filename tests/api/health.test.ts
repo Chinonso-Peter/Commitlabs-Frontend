@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { GET } from '@/app/api/health/route'
+import { NextRequest } from 'next/server'
+import { GET, OPTIONS } from '@/app/api/health/route'
 import { createMockRequest, parseResponse } from './helpers'
 
 describe('GET /api/health', () => {
@@ -31,5 +32,35 @@ describe('GET /api/health', () => {
     const result = await parseResponse(response)
 
     expect(result.data.version).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  it('should include public CORS headers on GET responses', async () => {
+    const request = createMockRequest('http://localhost:3000/api/health', {
+      headers: {
+        Origin: 'https://external.example',
+      },
+    })
+
+    const response = await GET(request)
+
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS')
+    expect(response.headers.get('Vary')).toContain('Origin')
+  })
+
+  it('should answer health preflight requests', async () => {
+    const request = new NextRequest('http://localhost:3000/api/health', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://external.example',
+        'Access-Control-Request-Method': 'GET',
+      },
+    })
+
+    const response = await OPTIONS(request)
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS')
   })
 })

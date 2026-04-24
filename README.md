@@ -154,6 +154,12 @@ The application requires the following environment variables (defined in `.env`)
 
 Note: The project also supports a versioned contract configuration via `NEXT_PUBLIC_CONTRACTS_JSON` and `NEXT_PUBLIC_ACTIVE_CONTRACT_VERSION`. See [docs/config.md](docs/config.md) for details.
 
+Browser-facing backend routes also use an explicit CORS policy helper. Configure
+trusted first-party origins with `COMMITLABS_FIRST_PARTY_ORIGINS` and public
+browser origins with `COMMITLABS_PUBLIC_API_ORIGINS`. See
+[docs/backend-cors-policy.md](docs/backend-cors-policy.md) for the route
+strategy and allowed methods.
+
 ## 📂 Project Structure
 
 ```
@@ -218,6 +224,7 @@ We welcome contributions! Please see our [Developer Guide](./DEVELOPER_GUIDE.md)
 A description of the backend endpoints exposed under `/api` can be found in:
 
 - [docs/backend-api-reference.md](./docs/backend-api-reference.md)
+- [docs/backend-cors-policy.md](./docs/backend-cors-policy.md)
 
 This document includes available routes, required parameters, and example
 requests/responses.  It is intended for developers building against or testing
