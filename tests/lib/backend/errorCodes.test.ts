@@ -180,9 +180,9 @@ describe("ERROR_CODE_REGISTRY", () => {
       expect(nonRetriable.length).toBeGreaterThan(0);
     });
 
-    it('should mark most 5xx errors as retriable', () => {
+    it("should mark most 5xx errors as retriable", () => {
       const fiveHundredCodes = Object.values(ERROR_CODE_REGISTRY).filter(
-        (def) => def.statusCode >= 500 && def.statusCode < 600
+        (def) => def.statusCode >= 500 && def.statusCode < 600,
       );
 
       // Most 5xx should be retriable (except those that clearly fail and won't recover)
@@ -406,7 +406,7 @@ describe("ERROR_CODE_REGISTRY", () => {
       const def = getErrorCodeDefinition("NOT_FOUND");
       expect(def.statusCode).toBe(404);
       expect(def.retriable).toBe(false);
-      expect(def.clientHandling.toLowerCase()).toContain('do not retry');
+      expect(def.clientHandling.toLowerCase()).toContain("do not retry");
     });
 
     it("should have proper configuration for conflict errors", () => {
