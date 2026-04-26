@@ -9,7 +9,11 @@ import {
   nativeToScVal,
   scValToNative,
 } from "@stellar/stellar-sdk";
-import { BackendError } from "@/lib/backend/errors";
+import {
+  BackendError,
+  BackendErrorCode,
+  normalizeBackendError,
+} from "@/lib/backend/errors";
 import { getBackendConfig } from "@/lib/backend/config";
 import { logInfo } from "@/lib/backend/logger";
 import { cache } from "@/lib/backend/cache/factory";
@@ -180,7 +184,7 @@ function normalizeStatus(value: unknown): ChainCommitmentStatus {
 function normalizeContractError(
   error: unknown,
   defaults: {
-    code: string;
+    code: BackendErrorCode;
     message: string;
     status: number;
     details?: Record<string, unknown>;
@@ -461,7 +465,7 @@ async function invokeContractMethod(
     });
   }
 
-  const preparedTx = await server.prepareTransaction(tx, simulation);
+  const preparedTx = await server.prepareTransaction(tx);
   preparedTx.sign(sourceKeypair);
   const sendResult = await server.sendTransaction(preparedTx);
   const txHash = sendResult.hash;
@@ -503,6 +507,8 @@ export async function createCommitmentOnChain(
     // Increment successful actions counter on successful commitment creation
     const countersAdapter = getCountersAdapter();
     void countersAdapter.incrementSuccessfulActions(); // Fire and forget for metrics
+
+    void cache.delete(CacheKey.userCommitments(params.ownerAddress));
 
     return parseCreateCommitmentResult(invocation.value, invocation.txHash);
   } catch (error) {
@@ -550,7 +556,9 @@ export async function getCommitmentFromChain(
     const countersAdapter = getCountersAdapter();
     void countersAdapter.incrementSuccessfulActions(); // Fire and forget for metrics
 
-    return parseChainCommitment(invocation.value);
+    const commitment = parseChainCommitment(invocation.value);
+    await cache.set(cacheKey, commitment, CacheTTL.COMMITMENT_DETAIL);
+    return commitment;
   } catch (error) {
     // Increment chain failures counter on blockchain operation failures
     const countersAdapter = getCountersAdapter();
@@ -648,7 +656,7 @@ export async function recordAttestationOnChain(
 
     // Snapshot ownerAddress from cache before writing so we can invalidate the
     // user-commitments list even though attestation params don't carry it.
-    const preWriteCached = await cache.get<ChainCommitment>(
+    const cachedCommitment = await cache.get<ChainCommitment>(
       CacheKey.commitment(params.commitmentId),
     );
 
@@ -670,6 +678,13 @@ export async function recordAttestationOnChain(
     // Increment successful actions counter on successful attestation recording
     const countersAdapter = getCountersAdapter();
     void countersAdapter.incrementSuccessfulActions(); // Fire and forget for metrics
+
+    void cache.delete(CacheKey.commitment(params.commitmentId));
+    if (cachedCommitment?.ownerAddress) {
+      void cache.delete(
+        CacheKey.userCommitments(cachedCommitment.ownerAddress),
+      );
+    }
 
     return parseAttestationResult(invocation.value, invocation.txHash);
   } catch (error) {
@@ -707,7 +722,7 @@ export async function settleCommitmentOnChain(
     // Check if commitment is matured (expired or can be settled)
     if (commitment.status === "SETTLED") {
       throw new BackendError({
-        code: "CONFLICT",
+        code: "CONFLICT" as BackendErrorCode,
         message: "Commitment has already been settled.",
         status: 409,
       });
@@ -745,6 +760,11 @@ export async function settleCommitmentOnChain(
     const countersAdapter = getCountersAdapter();
     void countersAdapter.incrementSuccessfulActions(); // Fire and forget for metrics
 
+    void cache.delete(CacheKey.commitment(params.commitmentId));
+    if (commitment.ownerAddress) {
+      void cache.delete(CacheKey.userCommitments(commitment.ownerAddress));
+    }
+
     // Parse the settlement result
     const result = asRecord(invocation.value);
     const settlementAmount = asString(result.settlementAmount, "0");
@@ -759,6 +779,10 @@ export async function settleCommitmentOnChain(
         : "TODO_CHAIN_CALL_SETTLE_COMMITMENT",
     };
   } catch (error) {
+    // Increment chain failures counter on blockchain operation failures
+    const countersAdapter = getCountersAdapter();
+    void countersAdapter.incrementChainFailures(); // Fire and forget for metrics
+
     throw normalizeContractError(error, {
       code: "BLOCKCHAIN_CALL_FAILED",
       message: "Unable to settle commitment on chain.",
