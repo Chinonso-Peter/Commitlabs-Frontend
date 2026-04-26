@@ -1,8 +1,6 @@
-import { randomBytes } from 'crypto';
+﻿import { randomBytes } from 'crypto';
 import Stellar from '@stellar/stellar-sdk';
 import { getKV } from './kv';
-
-// ─── Types ────────────────────────────────────────────────────────────────
 
 export interface NonceRecord {
     nonce: string;
@@ -24,7 +22,7 @@ export interface SignatureVerificationRequest {
     message: string;
 }
 
-export interface SignatureVerificationResult {
+export interface SignatureVerificationResult { 
     valid: boolean;
     address?: string;
     error?: string;
@@ -37,11 +35,6 @@ const NONCE_TTL_SECONDS = 5 * 60; // 5 minutes
 const NONCE_TTL = 5 * 60 * 1000; // 5 minutes
 const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-// ─── Nonce Management ───────────────────────────────────────────────────────
-
-/**
- * Generate a cryptographically secure random nonce.
- */
 export function generateNonce(): string {
     return randomBytes(16).toString('hex');
 }
@@ -88,47 +81,20 @@ export async function consumeNonce(nonce: string): Promise<boolean> {
     return !!record;
 }
 
-// ─── Signature Verification ─────────────────────────────────────────────────
-
-/**
- * Verify a Stellar signature against a message and address.
- * 
- * Uses the Stellar SDK to verify that the signature was created by the
- * private key corresponding to the provided public address.
- */
 export function verifyStellarSignature(
     address: string,
     signature: string,
     message: string
 ): SignatureVerificationResult {
     try {
-        // Validate inputs
         if (!address || !signature || !message) {
-            return {
-                valid: false,
-                error: 'Missing required fields: address, signature, or message',
-            };
+            return { valid: false, error: 'Missing required fields' };
         }
-
-        // Verify the signature using Stellar SDK
         const isValid = Stellar.verifySignature(address, signature, message);
-        
-        if (!isValid) {
-            return {
-                valid: false,
-                error: 'Invalid signature',
-            };
-        }
-
-        return {
-            valid: true,
-            address,
-        };
+        if (!isValid) return { valid: false, error: 'Invalid signature' };
+        return { valid: true, address };
     } catch (error) {
-        return {
-            valid: false,
-            error: error instanceof Error ? error.message : 'Unknown verification error',
-        };
+        return { valid: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
 }
 
@@ -137,14 +103,27 @@ export function verifyStellarSignature(
  */
 export async function verifySignatureWithNonce(request: SignatureVerificationRequest): Promise<SignatureVerificationResult> {
     const { address, signature, message } = request;
-    
-    // Extract nonce from message (expected format: "Sign in to CommitLabs: {nonce}")
-    const nonceMatch = message.match(/Sign in to CommitLabs:\s*([a-f0-9]+)/i);
-    if (!nonceMatch) {
-        return {
-            valid: false,
-            error: 'Invalid message format. Expected: "Sign in to CommitLabs: {nonce}"',
-        };
+    let nonce: string;
+
+    if (message.startsWith('[CommitLabs Auth V2]')) {
+        const domainMatch = message.match(/Domain: ([^\n]+)/);
+        const nonceMatch = message.match(/Nonce: ([a-f0-9]+)/);
+        const expiresMatch = message.match(/ExpiresAt: ([^\n]+)/);
+
+        if (!nonceMatch || !expiresMatch || !domainMatch) {
+            return { valid: false, error: 'Invalid V2 message format' };
+        }
+        if (domainMatch[1].trim() !== 'commitlabs.org') {
+            return { valid: false, error: 'Domain mismatch' };
+        }
+        if (new Date() > new Date(expiresMatch[1].trim())) {
+            return { valid: false, error: 'Challenge message expired' };
+        }
+        nonce = nonceMatch[1];
+    } else {
+        const nonceMatch = message.match(/Sign in to CommitLabs:\s*([a-f0-9]+)/i);
+        if (!nonceMatch) return { valid: false, error: 'Invalid message format' };
+        nonce = nonceMatch[1];
     }
     
     const nonce = nonceMatch[1];
@@ -181,13 +160,10 @@ export async function verifySignatureWithNonce(request: SignatureVerificationReq
     return verificationResult;
 }
 
-// ─── Challenge Message Generation ─────────────────────────────────────────────
-
-/**
- * Generate a challenge message for the user to sign.
- */
-export function generateChallengeMessage(nonce: string): string {
-    return `Sign in to CommitLabs: ${nonce}`;
+export function generateChallengeMessage(nonce: string, domain: string = 'commitlabs.org'): string {
+    const issuedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    return `[CommitLabs Auth V2]\nDomain: ${domain}\nNonce: ${nonce}\nIssuedAt: ${issuedAt}\nExpiresAt: ${expiresAt}`;
 }
 
 // ─── Session Management ───────────────────────────────────────────────────────
