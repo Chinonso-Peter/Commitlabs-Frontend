@@ -8,7 +8,7 @@ import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backe
 import { getClientIp } from '@/lib/backend/getClientIp';
 
 const NonceRequestSchema = z.object({
-    address: z.string().min(1, 'Address is required'),
+  address: z.string().min(1, "Address is required"),
 });
 
 export const POST = withApiHandler(async (req: NextRequest) => {
@@ -52,5 +52,5 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     }, undefined, 200, correlationId);
 });
 
-const _405 = methodNotAllowed(['POST']);
+const _405 = methodNotAllowed(["POST"]);
 export { _405 as GET, _405 as PUT, _405 as PATCH, _405 as DELETE };

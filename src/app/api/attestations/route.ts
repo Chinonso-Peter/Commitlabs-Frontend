@@ -197,4 +197,3 @@ export const POST = withApiHandler(async (req: NextRequest, context: { params: R
 
 const _405 = methodNotAllowed(['GET', 'POST']);
 export { _405 as PUT, _405 as PATCH, _405 as DELETE };
-});
