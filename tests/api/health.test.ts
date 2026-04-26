@@ -9,9 +9,9 @@ describe('GET /api/health', () => {
     const result = await parseResponse(response)
 
     expect(result.status).toBe(200)
-    expect(result.data).toHaveProperty('status', 'healthy')
-    expect(result.data).toHaveProperty('timestamp')
-    expect(result.data).toHaveProperty('version')
+    expect(result.data.data).toHaveProperty('status', 'healthy')
+    expect(result.data.data).toHaveProperty('timestamp')
+    expect(result.data.data).toHaveProperty('version')
   })
 
   it('should include x-request-id response header (generated)', async () => {
@@ -43,8 +43,7 @@ describe('GET /api/health', () => {
     const response = await GET(request, createMockRouteContext())
     const result = await parseResponse(response)
 
-    // Verify timestamp is valid ISO string
-    const timestamp = new Date(result.data.timestamp)
+    const timestamp = new Date(result.data.data.timestamp)
     expect(timestamp).toBeInstanceOf(Date)
     expect(timestamp.toString()).not.toBe('Invalid Date')
   })
@@ -54,6 +53,15 @@ describe('GET /api/health', () => {
     const response = await GET(request, createMockRouteContext())
     const result = await parseResponse(response)
 
-    expect(result.data.version).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(result.data.data.version).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  it('should attach security headers', async () => {
+    const request = createMockRequest('http://localhost:3000/api/health')
+    const response = await GET(request, createMockRouteContext())
+
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+    expect(response.headers.get('Content-Security-Policy')).toBeTruthy()
   })
 })
