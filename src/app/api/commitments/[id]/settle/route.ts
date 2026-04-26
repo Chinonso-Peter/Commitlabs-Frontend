@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
-import { ok } from '@/lib/backend/apiResponse';
+import { ok, methodNotAllowed } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError, NotFoundError, ConflictError } from '@/lib/backend/errors';
 import { settleCommitmentOnChain } from '@/lib/backend/services/contracts';
 import { logCommitmentSettled } from '@/lib/backend/logger';

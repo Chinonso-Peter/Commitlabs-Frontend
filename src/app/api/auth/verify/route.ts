@@ -67,3 +67,6 @@ export const POST = withApiHandler(async (req: NextRequest) => {
 
     return response;
 });
+
+const _405 = methodNotAllowed(['POST']);
+export { _405 as GET, _405 as PUT, _405 as PATCH, _405 as DELETE };

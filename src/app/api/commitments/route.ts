@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod';
 import { checkRateLimit } from "@/lib/backend/rateLimit";
 import { withApiHandler } from "@/lib/backend/withApiHandler";
-import { ok, fail } from "@/lib/backend/apiResponse";
+import { ok, fail, methodNotAllowed } from "@/lib/backend/apiResponse";
 import { TooManyRequestsError } from "@/lib/backend/errors";
 import { parseJsonWithLimit, JSON_BODY_LIMITS } from "@/lib/backend/jsonBodyLimit";
 import { getUserCommitmentsFromChain, createCommitmentOnChain } from "@/lib/backend/services/contracts";
@@ -147,3 +147,6 @@ export const POST = withApiHandler(async (req: NextRequest) => {
 
   return ok(result, 201);
 });
+
+const _405 = methodNotAllowed(['GET', 'POST']);
+export { _405 as PUT, _405 as PATCH, _405 as DELETE };

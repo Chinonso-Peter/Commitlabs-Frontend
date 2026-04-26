@@ -191,3 +191,7 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     return NextResponse.json(toBackendErrorResponse(normalized), { status: normalized.status });
   }
 });
+
+const _405 = methodNotAllowed(['GET', 'POST']);
+export { _405 as PUT, _405 as PATCH, _405 as DELETE };
+});

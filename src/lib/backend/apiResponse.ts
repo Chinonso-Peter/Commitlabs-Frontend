@@ -1,4 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+
+/** Route handler type accepted by Next.js App Router */
+type NextRouteHandler = (
+  req: NextRequest,
+  ctx?: unknown,
+) => NextResponse | Promise<NextResponse>;
 
 // ─── Success shape ────────────────────────────────────────────────────────────
 
@@ -76,6 +82,36 @@ export function ok<T>(
  * return fail('TOO_MANY_REQUESTS', 'Rate limit exceeded.', undefined, 429, 60);
  * // { success: false, error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded.', retryAfterSeconds: 60 } }
  */
+/**
+ * Returns a Next.js route handler that responds with 405 Method Not Allowed.
+ * The `Allow` response header is set to the comma-joined list of supported methods,
+ * and the body follows the project's standard `{ success, error }` shape.
+ *
+ * @param allowed - HTTP methods supported by the route, e.g. `['GET', 'POST']`
+ *
+ * @example
+ * // In a GET-only route:
+ * const _405 = methodNotAllowed(['GET']);
+ * export { _405 as POST, _405 as PUT, _405 as PATCH, _405 as DELETE };
+ */
+export function methodNotAllowed(allowed: string[]): NextRouteHandler {
+  const allowHeader = allowed.join(", ");
+  return (): NextResponse<FailResponse> =>
+    NextResponse.json<FailResponse>(
+      {
+        success: false,
+        error: {
+          code: "METHOD_NOT_ALLOWED",
+          message: `Method Not Allowed. Supported methods: ${allowHeader}`,
+        },
+      },
+      {
+        status: 405,
+        headers: { Allow: allowHeader },
+      },
+    );
+}
+
 export function fail(
   code: string,
   message: string,

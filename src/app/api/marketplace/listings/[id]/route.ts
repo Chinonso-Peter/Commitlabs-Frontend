@@ -68,3 +68,6 @@ export const DELETE = withApiHandler(
     return ok(response);
   }
 );
+
+const _405 = methodNotAllowed(['DELETE']);
+export { _405 as GET, _405 as POST, _405 as PUT, _405 as PATCH };
