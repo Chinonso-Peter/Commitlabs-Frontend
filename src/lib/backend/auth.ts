@@ -231,3 +231,17 @@ export function _clearStores(): void {
     nonceStore.clear();
     sessionStore.clear();
 }
+
+/**
+ * Clean up expired and revoked tokens periodically.
+ */
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, record] of sessionStore.entries()) {
+        // Remove revoked tokens after 7 days
+        if (record.revoked && record.revokedAt && 
+            now - record.revokedAt.getTime() > 7 * 24 * 60 * 60 * 1000) {
+            sessionStore.delete(token);
+        }
+    }
+}, 60 * 60 * 1000); // Clean up every hour
