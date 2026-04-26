@@ -9,7 +9,9 @@ import { getStorageAdapter } from '../storage';
 import type {
   MarketplaceListing,
   CreateListingRequest,
-} from '@/lib/types/domain';
+} from "@/lib/types/domain";
+import { cache } from "@/lib/backend/cache/factory";
+import { CacheKey, CacheTTL } from "@/lib/backend/cache/index";
 
 export type MarketplaceCommitmentType = 'Safe' | 'Balanced' | 'Aggressive';
 
@@ -177,9 +179,27 @@ export function getMarketplaceSortKeys(): MarketplaceSortBy[] {
   return Object.keys(SORT_CONFIG) as MarketplaceSortBy[];
 }
 
+/** Stable key for a given query — order of keys is deterministic via sort. */
+function queryHash(query: MarketplaceListingsQuery): string {
+  const entries = Object.entries(query)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+}
+
+const LISTINGS_PREFIX = "commitlabs:marketplace:listings:";
+
 export async function listMarketplaceListings(
   query: MarketplaceListingsQuery,
 ): Promise<MarketplacePublicListing[]> {
+  const cacheKey = CacheKey.marketplaceListings(queryHash(query));
+  const cached = await cache.get<MarketplacePublicListing[]>(cacheKey);
+  if (cached !== null) {
+    logInfo(undefined, "[cache] hit marketplace-listings", { query });
+    return cached;
+  }
+  logInfo(undefined, "[cache] miss marketplace-listings", { query });
+
   let results = MOCK_LISTINGS;
 
   if (query.type) {
@@ -207,7 +227,11 @@ export async function listMarketplaceListings(
   const sortBy =
     query.sortBy && isMarketplaceSortBy(query.sortBy) ? query.sortBy : 'price';
 
-  return sortListings(results, sortBy);
+  // TODO(on-chain): Replace mock listings with marketplace contract reads.
+  // TODO(attestation): Merge latest attestation engine score per commitment when available.
+  const listings = sortListings(results, sortBy);
+  await cache.set(cacheKey, listings, CacheTTL.MARKETPLACE_LISTINGS);
+  return listings;
 }
 
 export function selectFeaturedMarketplaceListings(
@@ -304,11 +328,11 @@ class MarketplaceService {
 
       logInfo(undefined, '[MarketplaceService] Listing created', { listingId });
 
-      return listing;
-    } catch (error) {
-      if (error instanceof ConflictError) {
-        throw error;
-      }
+    // Invalidate all cached listing queries — the set has changed.
+    await cache.invalidate(LISTINGS_PREFIX);
+    logInfo(undefined, "[cache] invalidated marketplace-listings after create", {
+      listingId,
+    });
 
       throw normalizeStorageError(error);
     }
@@ -348,10 +372,13 @@ class MarketplaceService {
         updatedAt: new Date().toISOString(),
       };
 
-      await this.storage.set(getListingStorageKey(listingId), cancelledListing);
-      await this.storage.delete(
-        getActiveListingStorageKey(listing.commitmentId),
-      );
+    // Invalidate all cached listing queries — the set has changed.
+    await cache.invalidate(LISTINGS_PREFIX);
+    logInfo(
+      undefined,
+      "[cache] invalidated marketplace-listings after cancel",
+      { listingId },
+    );
 
       logInfo(undefined, '[MarketplaceService] Listing cancelled', { listingId });
     } catch (error) {

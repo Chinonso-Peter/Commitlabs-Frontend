@@ -1,8 +1,6 @@
-import { randomBytes } from 'crypto';
+﻿import { randomBytes } from 'crypto';
 import Stellar from '@stellar/stellar-sdk';
-import { InternalError } from './errors';
-import { logError } from './logger';
-import { getStorageAdapter } from './storage';
+import { getKV } from './kv';
 
 export interface NonceRecord {
   nonce: string;
@@ -11,129 +9,76 @@ export interface NonceRecord {
   expiresAt: Date;
 }
 
+export interface SessionRecord {
+    token: string;
+    address: string;
+    createdAt: Date;
+    expiresAt: Date;
+}
+
 export interface SignatureVerificationRequest {
   address: string;
   signature: string;
   message: string;
 }
 
-export interface SignatureVerificationResult {
-  valid: boolean;
-  address?: string;
-  error?: string;
+export interface SignatureVerificationResult { 
+    valid: boolean;
+    address?: string;
+    error?: string;
 }
 
-interface StoredNonceRecord {
-  nonce: string;
-  address: string;
-  createdAt: string;
-  expiresAt: string;
-}
+// ─── Configuration ──────────────────────────────────────────────────────────
 
-interface SessionRecord {
-  address: string;
-  issuedAt: string;
-}
+const NONCE_TTL_SECONDS = 5 * 60; // 5 minutes
 
-const NONCE_TTL = 5 * 60 * 1000;
-const SESSION_TTL = 24 * 60 * 60 * 1000;
-
-function getNonceStorageKey(nonce: string): string {
-  return `auth:nonce:${nonce}`;
-}
-
-function getSessionStorageKey(token: string): string {
-  return `auth:session:${token}`;
-}
-
-function toStoredNonceRecord(record: NonceRecord): StoredNonceRecord {
-  return {
-    nonce: record.nonce,
-    address: record.address,
-    createdAt: record.createdAt.toISOString(),
-    expiresAt: record.expiresAt.toISOString(),
-  };
-}
-
-function toNonceRecord(record: StoredNonceRecord): NonceRecord {
-  return {
-    nonce: record.nonce,
-    address: record.address,
-    createdAt: new Date(record.createdAt),
-    expiresAt: new Date(record.expiresAt),
-  };
-}
+const NONCE_TTL = 5 * 60 * 1000; // 5 minutes
+const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 export function generateNonce(): string {
-  return randomBytes(16).toString('hex');
+    return randomBytes(16).toString('hex');
 }
 
-export async function storeNonce(
-  address: string,
-  nonce: string,
-): Promise<NonceRecord> {
-  const now = new Date();
-  const record: NonceRecord = {
-    nonce,
-    address,
-    createdAt: now,
-    expiresAt: new Date(now.getTime() + NONCE_TTL),
-  };
-
-  try {
-    await getStorageAdapter().set(
-      getNonceStorageKey(nonce),
-      toStoredNonceRecord(record),
-      { ttlMs: NONCE_TTL },
-    );
-  } catch (error) {
-    logError(undefined, '[Auth] Failed to store nonce', error as Error, {
-      address,
-    });
-    throw new InternalError(
-      'Unable to create sign-in challenge. Please try again later.',
-    );
-  }
-
-  return record;
+/**
+ * Store a nonce for a given Stellar address in KV store with TTL.
+ */
+export async function storeNonce(address: string, nonce: string): Promise<NonceRecord> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + NONCE_TTL_SECONDS * 1000);
+    
+    const record: NonceRecord = {
+        nonce,
+        address,
+        createdAt: now,
+        expiresAt,
+    };
+    
+    const kv = getKV();
+    const redisKey = `auth:nonce:${nonce}`;
+    
+    await kv.set(redisKey, record, NONCE_TTL_SECONDS);
+    
+    return record;
 }
 
-export async function getNonceRecord(
-  nonce: string,
-): Promise<NonceRecord | undefined> {
-  try {
-    const record = await getStorageAdapter().get<StoredNonceRecord>(
-      getNonceStorageKey(nonce),
-    );
-
-    if (!record) {
-      return undefined;
-    }
-
-    return toNonceRecord(record);
-  } catch (error) {
-    logError(undefined, '[Auth] Failed to read nonce', error as Error, {
-      nonce,
-    });
-    return undefined;
-  }
+/**
+ * Retrieve a nonce record by nonce value.
+ */
+export async function getNonceRecord(nonce: string): Promise<NonceRecord | null> {
+    const kv = getKV();
+    const redisKey = `auth:nonce:${nonce}`;
+    return await kv.get<NonceRecord>(redisKey);
 }
 
+/**
+ * Consume/remove a nonce after successful verification (Atomic).
+ * Uses GETDEL if supported by the KV store.
+ */
 export async function consumeNonce(nonce: string): Promise<boolean> {
-  try {
-    const record = await getNonceRecord(nonce);
-    if (!record) {
-      return false;
-    }
-
-    await getStorageAdapter().delete(getNonceStorageKey(nonce));
-    return true;
-  } catch (error) {
-    logError(undefined, '[Auth] Failed to consume nonce', error as Error, {
-      nonce,
-    });
-    return false;
-  }
+    const kv = getKV();
+    const redisKey = `auth:nonce:${nonce}`;
+    const record = await kv.getdel<NonceRecord>(redisKey);
+    return !!record;
 }
 
 export function verifyStellarSignature(
@@ -141,21 +86,74 @@ export function verifyStellarSignature(
   signature: string,
   message: string,
 ): SignatureVerificationResult {
-  try {
-    if (!address || !signature || !message) {
-      return {
-        valid: false,
-        error: 'Missing required fields: address, signature, or message',
-      };
+    try {
+        if (!address || !signature || !message) {
+            return { valid: false, error: 'Missing required fields' };
+        }
+        const isValid = Stellar.verifySignature(address, signature, message);
+        if (!isValid) return { valid: false, error: 'Invalid signature' };
+        return { valid: true, address };
+    } catch (error) {
+        return { valid: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
 
-    const isValid = Stellar.verifySignature(address, signature, message);
+/**
+ * Verify a signature request including nonce validation.
+ */
+export async function verifySignatureWithNonce(request: SignatureVerificationRequest): Promise<SignatureVerificationResult> {
+    const { address, signature, message } = request;
+    let nonce: string;
 
-    if (!isValid) {
-      return {
-        valid: false,
-        error: 'Invalid signature',
-      };
+    if (message.startsWith('[CommitLabs Auth V2]')) {
+        const domainMatch = message.match(/Domain: ([^\n]+)/);
+        const nonceMatch = message.match(/Nonce: ([a-f0-9]+)/);
+        const expiresMatch = message.match(/ExpiresAt: ([^\n]+)/);
+
+        if (!nonceMatch || !expiresMatch || !domainMatch) {
+            return { valid: false, error: 'Invalid V2 message format' };
+        }
+        if (domainMatch[1].trim() !== 'commitlabs.org') {
+            return { valid: false, error: 'Domain mismatch' };
+        }
+        if (new Date() > new Date(expiresMatch[1].trim())) {
+            return { valid: false, error: 'Challenge message expired' };
+        }
+        nonce = nonceMatch[1];
+    } else {
+        const nonceMatch = message.match(/Sign in to CommitLabs:\s*([a-f0-9]+)/i);
+        if (!nonceMatch) return { valid: false, error: 'Invalid message format' };
+        nonce = nonceMatch[1];
+    }
+    
+    const nonce = nonceMatch[1];
+    const nonceRecord = await getNonceRecord(nonce);
+    
+    if (!nonceRecord) {
+        return {
+            valid: false,
+            error: 'Invalid or expired nonce',
+        };
+    }
+    
+    if (nonceRecord.address !== address) {
+        return {
+            valid: false,
+            error: 'Nonce address mismatch',
+        };
+    }
+    
+    // Verify the signature
+    const verificationResult = verifyStellarSignature(address, signature, message);
+    
+    // If signature is valid, consume the nonce (atomic)
+    if (verificationResult.valid) {
+        const consumed = await consumeNonce(nonce);
+        if (!consumed) {
+            return {
+                valid: false,
+                error: 'Nonce already consumed or expired during verification',
+            };
+        }
     }
 
     return {
@@ -173,91 +171,63 @@ export function verifyStellarSignature(
   }
 }
 
-export async function verifySignatureWithNonce(
-  request: SignatureVerificationRequest,
-): Promise<SignatureVerificationResult> {
-  const { address, signature, message } = request;
-
-  const nonceMatch = message.match(/Sign in to CommitLabs:\s*([a-f0-9]+)/i);
-  if (!nonceMatch) {
-    return {
-      valid: false,
-      error: 'Invalid message format. Expected: "Sign in to CommitLabs: {nonce}"',
-    };
-  }
-
-  const nonce = nonceMatch[1];
-  const nonceRecord = await getNonceRecord(nonce);
-
-  if (!nonceRecord) {
-    return {
-      valid: false,
-      error: 'Invalid or expired nonce',
-    };
-  }
-
-  if (nonceRecord.address !== address) {
-    return {
-      valid: false,
-      error: 'Nonce address mismatch',
-    };
-  }
-
-  const verificationResult = verifyStellarSignature(address, signature, message);
-
-  if (verificationResult.valid) {
-    await consumeNonce(nonce);
-  }
-
-  return verificationResult;
+export function generateChallengeMessage(nonce: string, domain: string = 'commitlabs.org'): string {
+    const issuedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    return `[CommitLabs Auth V2]\nDomain: ${domain}\nNonce: ${nonce}\nIssuedAt: ${issuedAt}\nExpiresAt: ${expiresAt}`;
 }
 
-export function generateChallengeMessage(nonce: string): string {
-  return `Sign in to CommitLabs: ${nonce}`;
-}
+// ─── Session Management ───────────────────────────────────────────────────────
 
-export async function createSessionToken(address: string): Promise<string> {
-  const token = `session_${address}_${Date.now()}`;
+/**
+ * Create a session token after successful verification and store it.
+ */
+export function createSessionToken(address: string): string {
+    const token = `session_${randomBytes(16).toString('hex')}`;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + SESSION_TTL);
 
-  try {
-    await getStorageAdapter().set<SessionRecord>(
-      getSessionStorageKey(token),
-      {
+    const record: SessionRecord = {
+        token,
         address,
-        issuedAt: new Date().toISOString(),
-      },
-      { ttlMs: SESSION_TTL },
-    );
-  } catch (error) {
-    logError(undefined, '[Auth] Failed to create session token', error as Error, {
-      address,
-    });
-    throw new InternalError('Unable to create session. Please try again later.');
-  }
+        createdAt: now,
+        expiresAt,
+    };
 
-  return token;
+    sessionStore.set(token, record);
+    return token;
 }
 
-export async function verifySessionToken(
-  token: string,
-): Promise<{ valid: boolean; address?: string }> {
-  try {
-    const session = await getStorageAdapter().get<SessionRecord>(
-      getSessionStorageKey(token),
-    );
-
-    if (!session) {
-      return { valid: false };
+/**
+ * Verify a session token.
+ */
+export function verifySessionToken(token: string): { valid: boolean; address?: string } {
+    const record = sessionStore.get(token);
+    
+    if (!record) {
+        return { valid: false };
     }
 
-    return {
-      valid: true,
-      address: session.address,
-    };
-  } catch (error) {
-    logError(undefined, '[Auth] Failed to verify session token', error as Error, {
-      token,
-    });
-    return { valid: false };
-  }
+    if (record.expiresAt < new Date()) {
+        sessionStore.delete(token);
+        return { valid: false };
+    }
+
+    return { valid: true, address: record.address };
+}
+
+/**
+ * Invalidate a session token.
+ */
+export function revokeSession(token: string): boolean {
+    return sessionStore.delete(token);
+}
+
+/**
+ * Export for testing purposes (in-memory store)
+ * @internal
+ */
+export function _clearStores(): void {
+    nonceStore.clear();
+    sessionStore.clear();
 }
