@@ -1,3 +1,14 @@
+/**
+ * Error handling module.
+ *
+ * Defines typed error classes that correspond to HTTP status codes.
+ * Each error class maps to a definition in the centralized error code registry.
+ *
+ * @see errorCodes.ts for the centralized error code registry and documentation
+ */
+
+import { ERROR_CODE_REGISTRY } from "./errorCodes";
+
 // ─── Base API error ───────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -119,7 +130,14 @@ export class InternalError extends ApiError {
 
 // ─── HTTP status → error code mapping ───────────────────────────────────────
 
-/** Map of HTTP status codes to their canonical error code strings. */
+/**
+ * Map of HTTP status codes to their canonical error code strings.
+ *
+ * @deprecated Use ERROR_CODE_REGISTRY from errorCodes.ts for detailed error
+ * documentation including meaning, client handling, and retriable status.
+ *
+ * @see ERROR_CODE_REGISTRY
+ */
 export const HTTP_ERROR_CODES: Record<number, string> = {
   400: "BAD_REQUEST",
   401: "UNAUTHORIZED",
@@ -209,3 +227,19 @@ export function toBackendErrorResponse(
     },
   };
 }
+
+// ─── Error code registry exports ──────────────────────────────────────────────
+
+/**
+ * Re-export error code registry utilities for easy access throughout the application.
+ *
+ * @see errorCodes.ts for full registry and documentation
+ */
+export {
+  ERROR_CODE_REGISTRY,
+  getErrorCodeDefinition,
+  getErrorCodesByStatus,
+  validateErrorCodeRegistry,
+  type ErrorCodeDefinition,
+  type RegisteredErrorCode,
+} from "./errorCodes";
