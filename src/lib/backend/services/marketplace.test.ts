@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   FEATURED_MARKETPLACE_CONFIG,
   marketplaceService,
@@ -6,14 +6,70 @@ import {
   type MarketplacePublicListing,
 } from './marketplace';
 import { ValidationError, ConflictError, NotFoundError } from '../errors';
-import type { CreateListingRequest } from '@/types/marketplace';
+import type { CreateListingRequest } from '@/lib/types/domain';
+
+describe('Marketplace Functions', () => {
+  describe('isMarketplaceSortBy', () => {
+    it('should return true for valid sort keys', () => {
+      expect(isMarketplaceSortBy('price')).toBe(true);
+      expect(isMarketplaceSortBy('amount')).toBe(true);
+    });
+
+    it('should return false for invalid sort keys', () => {
+      expect(isMarketplaceSortBy('invalid')).toBe(false);
+    });
+  });
+
+  describe('getMarketplaceSortKeys', () => {
+    it('should return all valid sort keys', () => {
+      const keys = getMarketplaceSortKeys();
+      expect(keys).toContain('price');
+      expect(keys).toContain('amount');
+      expect(keys).toContain('complianceScore');
+    });
+  });
+
+  describe('listMarketplaceListings', () => {
+    it('should return all listings by default', async () => {
+      const listings = await listMarketplaceListings({});
+      expect(listings.length).toBeGreaterThan(0);
+    });
+
+    it('should filter by type', async () => {
+      const listings = await listMarketplaceListings({ type: 'Safe' });
+      listings.forEach(l => expect(l.type).toBe('Safe'));
+    });
+
+    it('should filter by minCompliance', async () => {
+      const listings = await listMarketplaceListings({ minCompliance: 90 });
+      listings.forEach(l => expect(l.complianceScore).toBeGreaterThanOrEqual(90));
+    });
+
+    it('should filter by maxLoss', async () => {
+      const listings = await listMarketplaceListings({ maxLoss: 5 });
+      listings.forEach(l => expect(l.maxLoss).toBeLessThanOrEqual(5));
+    });
+
+    it('should filter by minAmount', async () => {
+      const listings = await listMarketplaceListings({ minAmount: 100000 });
+      listings.forEach(l => expect(l.amount).toBeGreaterThanOrEqual(100000));
+    });
+
+    it('should filter by maxAmount', async () => {
+      const listings = await listMarketplaceListings({ maxAmount: 100000 });
+      listings.forEach(l => expect(l.amount).toBeLessThanOrEqual(100000));
+    });
+
+    it('should sort by remainingDays ascending', async () => {
+      const listings = await listMarketplaceListings({ sortBy: 'remainingDays' });
+      for (let i = 0; i < listings.length - 1; i++) {
+        expect(listings[i].remainingDays).toBeLessThanOrEqual(listings[i+1].remainingDays);
+      }
+    });
+  });
+});
 
 describe('MarketplaceService', () => {
-  // Reset service state before each test
-  beforeEach(() => {
-    // Clear internal state by creating listings and then accessing private members
-    // Since we can't directly access private members, we'll work with the public API
-  });
 
   describe('createListing', () => {
     it('should create a valid listing', async () => {

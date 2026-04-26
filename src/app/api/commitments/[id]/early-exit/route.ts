@@ -1,16 +1,17 @@
 import { NextRequest } from 'next/server';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
+import { getClientIp } from '@/lib/backend/getClientIp';
 import { logEarlyExit } from '@/lib/backend/logger';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError } from '@/lib/backend/errors';
 
-interface Params {
-    params: { id: string };
-}
+export const POST = withApiHandler(async (req: NextRequest, context: { params: Record<string, string> }) => {
+  assertMutationCsrf(req);
 
 export const POST = withApiHandler(async (req: NextRequest, { params }: Params) => {
     const { id } = params;
+    const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
 
     const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
 

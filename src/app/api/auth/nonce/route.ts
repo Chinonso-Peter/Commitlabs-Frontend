@@ -4,14 +4,16 @@ import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError } from '@/lib/backend/errors';
+import { validationErrorFromZod } from '@/lib/backend/validationErrors';
 import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backend/auth';
+import { getClientIp } from '@/lib/backend/getClientIp';
 
 const NonceRequestSchema = z.object({
-    address: z.string().min(1, 'Address is required'),
+  address: z.string().min(1, "Address is required"),
 });
 
 export const POST = withApiHandler(async (req: NextRequest) => {
-    const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
+    const ip = getClientIp(req);
 
     // Rate limiting by IP
     const isIpAllowed = await checkRateLimit(ip, 'api/auth/nonce');
@@ -28,7 +30,7 @@ export const POST = withApiHandler(async (req: NextRequest) => {
 
     const validation = NonceRequestSchema.safeParse(body);
     if (!validation.success) {
-        throw new ValidationError('Invalid request data', validation.error.errors);
+        throw new ValidationError('Invalid request data', validation.error.issues);
     }
 
     const { address } = validation.data;
@@ -48,8 +50,8 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         nonce,
         message: challengeMessage,
         expiresAt: nonceRecord.expiresAt.toISOString(),
-    });
+    }, undefined, 200, correlationId);
 });
 
-const _405 = methodNotAllowed(['POST']);
+const _405 = methodNotAllowed(["POST"]);
 export { _405 as GET, _405 as PUT, _405 as PATCH, _405 as DELETE };
