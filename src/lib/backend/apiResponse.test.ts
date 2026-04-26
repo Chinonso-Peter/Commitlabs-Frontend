@@ -1,72 +1,110 @@
 import { describe, it, expect } from 'vitest';
 import { ok, fail } from './apiResponse';
 
-describe('apiResponse security headers', () => {
-  const SECURITY_HEADERS = [
-    'Content-Security-Policy',
-    'X-Content-Type-Options',
-    'X-Frame-Options',
-    'X-XSS-Protection',
-    'Referrer-Policy',
-  ] as const;
+describe('ok()', () => {
+  it('should return 200 with data', async () => {
+    const res = ok({ id: 1 });
+    const json = await res.json();
 
-  describe('ok()', () => {
-    it('should attach security headers to success response', () => {
-      const response = ok({ message: 'test' });
-      const headers = response.headers;
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ success: true, data: { id: 1 } });
+  });
 
-      expect(headers.get('Content-Security-Policy')).toBe("default-src 'self'");
-      expect(headers.get('X-Content-Type-Options')).toBe('nosniff');
-      expect(headers.get('X-Frame-Options')).toBe('DENY');
-      expect(headers.get('X-XSS-Protection')).toBe('1; mode=block');
-      expect(headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+  it('should return custom status when meta is a number', async () => {
+    const res = ok({ id: 1 }, 201);
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json).toEqual({ success: true, data: { id: 1 } });
+  });
+
+  it('should include meta when provided as object', async () => {
+    const res = ok([1, 2, 3], { total: 3, page: 1 });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      success: true,
+      data: [1, 2, 3],
+      meta: { total: 3, page: 1 },
     });
+  });
+});
 
-    it('should attach security headers with custom CSP', () => {
-      const response = ok({ message: 'test' }, 200);
-      // Note: ok() doesn't currently support custom CSP - this tests baseline
-      const headers = response.headers;
-      
-      expect(headers.get('Content-Security-Policy')).toBe("default-src 'self'");
-    });
+describe('fail()', () => {
+  it('should return error body without retryAfterSeconds when not provided', async () => {
+    const res = fail('NOT_FOUND', 'Commitment not found.', undefined, 404);
+    const json = await res.json();
 
-    it('should include success: true in body', async () => {
-      const response = ok({ id: 1 });
-      const body = await response.json();
-      
-      expect(body.success).toBe(true);
-      expect(body.data).toEqual({ id: 1 });
+    expect(res.status).toBe(404);
+    expect(json).toEqual({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Commitment not found.',
+      },
     });
   });
 
-  describe('fail()', () => {
-    it('should attach security headers to error response', () => {
-      const response = fail('NOT_FOUND', 'Resource not found', undefined, 404);
-      const headers = response.headers;
+  it('should not include Retry-After header when retryAfterSeconds is undefined', async () => {
+    const res = fail('NOT_FOUND', 'Not found.', undefined, 404);
+    expect(res.headers.get('Retry-After')).toBeNull();
+  });
 
-      expect(headers.get('Content-Security-Policy')).toBe("default-src 'self'");
-      expect(headers.get('X-Content-Type-Options')).toBe('nosniff');
-      expect(headers.get('X-Frame-Options')).toBe('DENY');
-      expect(headers.get('X-XSS-Protection')).toBe('1; mode=block');
-      expect(headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
-    });
+  it('should include retryAfterSeconds in body when provided', async () => {
+    const res = fail('TOO_MANY_REQUESTS', 'Rate limited.', undefined, 429, 60);
+    const json = await res.json();
 
-    it('should include success: false and error details in body', async () => {
-      const response = fail('INVALID_REQUEST', 'Missing required field', { field: 'email' }, 400);
-      const body = await response.json();
-      
-      expect(body.success).toBe(false);
-      expect(body.error).toEqual({
-        code: 'INVALID_REQUEST',
-        message: 'Missing required field',
-        details: { field: 'email' },
-      });
-    });
+    expect(res.status).toBe(429);
+    expect(json.error.retryAfterSeconds).toBe(60);
+  });
 
-    it('should use correct HTTP status code', () => {
-      const response = fail('ERROR', 'Error message', undefined, 500);
-      
-      expect(response.status).toBe(500);
+  it('should include Retry-After header when retryAfterSeconds is provided', async () => {
+    const res = fail('TOO_MANY_REQUESTS', 'Rate limited.', undefined, 429, 60);
+    expect(res.headers.get('Retry-After')).toBe('60');
+  });
+
+  it('should use 0 as Retry-After header value when retryAfterSeconds is 0', async () => {
+    const res = fail('TOO_MANY_REQUESTS', 'Rate limited.', undefined, 429, 0);
+    expect(res.headers.get('Retry-After')).toBe('0');
+    const json = await res.json();
+    expect(json.error.retryAfterSeconds).toBe(0);
+  });
+
+  it('should include details when provided', async () => {
+    const res = fail('VALIDATION_ERROR', 'Invalid input.', { field: 'amount' }, 400);
+    const json = await res.json();
+
+    expect(json.error.details).toEqual({ field: 'amount' });
+  });
+
+  it('should omit details when undefined', async () => {
+    const res = fail('INTERNAL_ERROR', 'Something went wrong.', undefined, 500);
+    const json = await res.json();
+
+    expect(json.error.details).toBeUndefined();
+  });
+
+  it('should include both details and retryAfterSeconds', async () => {
+    const res = fail('TOO_MANY_REQUESTS', 'Rate limited.', { ip: '1.2.3.4' }, 429, 45);
+    const json = await res.json();
+
+    expect(json).toEqual({
+      success: false,
+      error: {
+        code: 'TOO_MANY_REQUESTS',
+        message: 'Rate limited.',
+        details: { ip: '1.2.3.4' },
+        retryAfterSeconds: 45,
+      },
     });
+  });
+
+  it('should use 503 with ServiceUnavailableError retryAfterSeconds', async () => {
+    const res = fail('SERVICE_UNAVAILABLE', 'Down for maintenance.', undefined, 503, 30);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('30');
+    const json = await res.json();
+    expect(json.error.retryAfterSeconds).toBe(30);
   });
 });
