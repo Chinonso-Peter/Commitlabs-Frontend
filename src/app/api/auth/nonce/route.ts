@@ -2,11 +2,10 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
-import { ok, fail } from '@/lib/backend/apiResponse';
+import { ok } from '@/lib/backend/apiResponse';
 import { TooManyRequestsError, ValidationError } from '@/lib/backend/errors';
 import { generateNonce, storeNonce, generateChallengeMessage } from '@/lib/backend/auth';
 
-// Request validation schema
 const NonceRequestSchema = z.object({
     address: z.string().min(1, 'Address is required'),
 });
@@ -20,11 +19,10 @@ export const POST = withApiHandler(async (req: NextRequest) => {
         throw new TooManyRequestsError('Rate limit exceeded for your IP. Please try again later.');
     }
 
-    // Parse and validate request body
     let body;
     try {
         body = await req.json();
-    } catch (error) {
+    } catch {
         throw new ValidationError('Invalid JSON in request body');
     }
 
@@ -46,7 +44,6 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     const nonceRecord = await storeNonce(address, nonce);
     const challengeMessage = generateChallengeMessage(nonce);
 
-    // Return the nonce and challenge message
     return ok({
         nonce,
         message: challengeMessage,

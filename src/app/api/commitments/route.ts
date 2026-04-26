@@ -41,9 +41,9 @@ export const GET = withApiHandler(async (req: NextRequest) => {
 
   const ip = req.ip ?? req.headers.get("x-forwarded-for") ?? "anonymous";
 
-  const isAllowed = await checkRateLimit(ip, "api/commitments");
-  if (!isAllowed) {
-    throw new TooManyRequestsError();
+  const { allowed, retryAfterSeconds } = await checkRateLimit(ip, "api/commitments");
+  if (!allowed) {
+    throw new TooManyRequestsError(undefined, undefined, retryAfterSeconds);
   }
 
   const commitments = await getUserCommitmentsFromChain(ownerAddress);
@@ -97,9 +97,9 @@ export const GET = withApiHandler(async (req: NextRequest) => {
 export const POST = withApiHandler(async (req: NextRequest) => {
   const ip = req.ip ?? req.headers.get("x-forwarded-for") ?? "anonymous";
 
-  const isAllowed = await checkRateLimit(ip, "api/commitments");
-  if (!isAllowed) {
-    throw new TooManyRequestsError();
+  const { allowed, retryAfterSeconds } = await checkRateLimit(ip, "api/commitments");
+  if (!allowed) {
+    throw new TooManyRequestsError(undefined, undefined, retryAfterSeconds);
   }
 
   const parsed = await parseJsonWithLimit(req, {
@@ -116,7 +116,6 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     metadata,
   } = body;
 
-  // Basic validation
   if (!ownerAddress || typeof ownerAddress !== "string") {
     return fail("Invalid ownerAddress", "BAD_REQUEST", 400);
   }
@@ -137,7 +136,6 @@ export const POST = withApiHandler(async (req: NextRequest) => {
     return fail("Invalid maxLossBps", "BAD_REQUEST", 400);
   }
 
-  // Call chain interaction
   const result = await createCommitmentOnChain({
     ownerAddress,
     asset,

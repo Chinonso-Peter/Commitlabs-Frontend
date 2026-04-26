@@ -27,6 +27,7 @@ export {
   ConflictError,
   PayloadTooLargeError,
   TooManyRequestsError,
+  ServiceUnavailableError,
   InternalError,
   HTTP_ERROR_CODES,
 } from "./errors";

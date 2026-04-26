@@ -7,7 +7,6 @@ import { ApiError, TooManyRequestsError, ValidationError, UnauthorizedError } fr
 import { parseJsonWithLimit, JSON_BODY_LIMITS } from '@/lib/backend/jsonBodyLimit';
 import { verifySignatureWithNonce, createSessionToken } from '@/lib/backend/auth';
 
-// Request validation schema
 const VerifyRequestSchema = z.object({
     address: z.string().min(1, 'Address is required'),
     signature: z.string().min(1, 'Signature is required'),

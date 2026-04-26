@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { ok } from '@/lib/backend/apiResponse';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
@@ -91,43 +91,27 @@ function parseQuery(searchParams: URLSearchParams): ParseResult {
     };
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
+export const GET = withApiHandler(async (req: NextRequest) => {
     const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
-    const isAllowed = await checkRateLimit(ip, 'api/marketplace/listings');
 
-    if (!isAllowed) {
-        return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    const { allowed, retryAfterSeconds } = await checkRateLimit(ip, 'api/marketplace/listings');
+    if (!allowed) {
+        throw new TooManyRequestsError(undefined, undefined, retryAfterSeconds);
     }
 
-    try {
-        const { searchParams } = new URL(req.url);
-        const filters = parseQuery(searchParams);
-        const listings = await listMarketplaceListings(filters);
+    const { searchParams } = new URL(req.url);
+    const filters = parseQuery(searchParams);
+    const listings = await listMarketplaceListings(filters);
 
-        return ok({
-            listings,
-            cards: listings.map(toMarketplaceCard),
-            total: listings.length,
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to list marketplace listings.';
-        const isValidation = message.startsWith('Invalid');
-
-        return NextResponse.json(
-            {
-                success: false,
-                error: {
-                    code: isValidation ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR',
-                    message,
-                },
-            },
-            { status: isValidation ? 400 : 500 }
-        );
-    }
-}
+    return ok({
+        listings,
+        cards: listings.map(toMarketplaceCard),
+        total: listings.length,
+    });
+});
 
 export const POST = withApiHandler(async (req: NextRequest) => {
-        let body: unknown;
+    let body: unknown;
 
         try {
                 body = await parseJsonWithLimit(req, {
@@ -138,16 +122,16 @@ export const POST = withApiHandler(async (req: NextRequest) => {
                 throw new ValidationError('Invalid JSON in request body');
         }
 
-        if (!body || typeof body !== 'object') {
-                throw new ValidationError('Request body must be an object');
-        }
+    if (!body || typeof body !== 'object') {
+        throw new ValidationError('Request body must be an object');
+    }
 
-        const request = body as CreateListingRequest;
-        const listing = await marketplaceService.createListing(request);
+    const request = body as CreateListingRequest;
+    const listing = await marketplaceService.createListing(request);
 
-        const response: CreateListingResponse = {
-                listing,
-        };
+    const response: CreateListingResponse = {
+        listing,
+    };
 
-        return ok(response, 201);
+    return ok(response, 201);
 });
