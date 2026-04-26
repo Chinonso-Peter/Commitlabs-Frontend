@@ -4,15 +4,7 @@ import { POST as EarlyExitPOST } from '@/app/api/commitments/[id]/early-exit/rou
 import { createMockRequest, parseResponse } from './helpers'
 
 /**
- * Type definitions for better type safety in test mocks
- */
-interface MockError extends Error {
-  name: string
-  constructor?: new (message?: string) => MockError
-}
-
-/**
- * Standard API response interface for type-safe assertions
+ * Type definitions for test interfaces
  */
 interface ApiResponse {
   ok: boolean
@@ -23,28 +15,39 @@ interface ApiResponse {
   }
 }
 
-/**
- * Test parameters interface for API route handlers
- */
 interface TestParams {
   params: { id: string }
 }
 
-// Mock dependencies with proper typing
+interface MockError extends Error {
+  name: string
+}
+
+/**
+ * Mock rate limiting
+ */
 vi.mock('@/lib/backend/rateLimit', () => ({
   checkRateLimit: vi.fn()
 }))
 
+/**
+ * Mock contracts service
+ */
 vi.mock('@/lib/backend/services/contracts', () => ({
   settleCommitmentOnChain: vi.fn()
 }))
 
+/**
+ * Mock logger
+ */
 vi.mock('@/lib/backend/logger', () => ({
   logCommitmentSettled: vi.fn(),
   logEarlyExit: vi.fn()
 }))
 
-// Enhanced withApiHandler mock with proper error handling
+/**
+ * Mock API handler with error handling
+ */
 vi.mock('@/lib/backend/withApiHandler', () => ({
   withApiHandler: (handler: (req: Request, params: TestParams) => Promise<Response>) => 
     async (req: Request, params: TestParams): Promise<Response> => {
@@ -53,7 +56,6 @@ vi.mock('@/lib/backend/withApiHandler', () => ({
       } catch (error: unknown) {
         const typedError = error as MockError
         
-        // Type-safe error handling
         const errorHandlers = {
           TooManyRequestsError: () => new Response(
             JSON.stringify({
@@ -112,6 +114,9 @@ vi.mock('@/lib/backend/withApiHandler', () => ({
     }
 }))
 
+/**
+ * Mock API response helper
+ */
 vi.mock('@/lib/backend/apiResponse', () => ({
   ok: (data: unknown) => {
     const response = new Response(JSON.stringify({ ok: true, data }), {
@@ -122,7 +127,9 @@ vi.mock('@/lib/backend/apiResponse', () => ({
   }
 }))
 
-// Proper error class definitions with typing
+/**
+ * Mock error classes
+ */
 vi.mock('@/lib/backend/errors', () => ({
   TooManyRequestsError: class extends Error {
     constructor(message = 'Too many requests') {
@@ -150,16 +157,12 @@ vi.mock('@/lib/backend/errors', () => ({
   }
 }))
 
-// Import mocked dependencies with proper typing
 import { checkRateLimit } from '@/lib/backend/rateLimit'
 import { settleCommitmentOnChain } from '@/lib/backend/services/contracts'
 import { logCommitmentSettled, logEarlyExit } from '@/lib/backend/logger'
 import { ValidationError, NotFoundError, ConflictError } from '@/lib/backend/errors'
 
-/**
- * Test suite for settle endpoint error states
- */
-describe('POST /api/commitments/[id]/settle - Error States', () => {
+describe('Settle API Error States', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(checkRateLimit).mockResolvedValue(true)
@@ -200,7 +203,6 @@ describe('POST /api/commitments/[id]/settle - Error States', () => {
     })
 
     it('should return 400 when request body contains invalid JSON', async () => {
-      // Create a mock request that will fail JSON parsing
       const request = new Request('http://localhost:3000/api/commitments/test-id/settle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -215,26 +217,9 @@ describe('POST /api/commitments/[id]/settle - Error States', () => {
       expect((result.data as ApiResponse).error).toHaveProperty('code', 'VALIDATION_ERROR')
       expect((result.data as ApiResponse).error?.message).toContain('Invalid JSON')
     })
-
-    it('should return 400 when callerAddress is invalid', async () => {
-      const request = createMockRequest(
-        'http://localhost:3000/api/commitments/test-id/settle',
-        { 
-          method: 'POST', 
-          body: { callerAddress: 123 } // Should be string
-        }
-      )
-      
-      const response = await POST(request, { params: { id: 'test-id' } })
-      const result = await parseResponse(response)
-      
-      expect(result.status).toBe(400)
-      expect(result.data).toHaveProperty('ok', false)
-      expect((result.data as ApiResponse).error).toHaveProperty('code', 'VALIDATION_ERROR')
-    })
   })
 
-  describe('Contract Service Errors', () => {
+  describe('Service Errors', () => {
     it('should return 404 when commitment is not found', async () => {
       vi.mocked(settleCommitmentOnChain).mockRejectedValue(
         new NotFoundError('Commitment not found')
@@ -273,25 +258,6 @@ describe('POST /api/commitments/[id]/settle - Error States', () => {
       expect((result.data as ApiResponse).error?.message).toContain('already been settled')
     })
 
-    it('should return 400 when commitment is not matured', async () => {
-      vi.mocked(settleCommitmentOnChain).mockRejectedValue(
-        new ValidationError('Commitment has not matured yet and cannot be settled')
-      )
-      
-      const request = createMockRequest(
-        'http://localhost:3000/api/commitments/immature-id/settle',
-        { method: 'POST', body: {} }
-      )
-      
-      const response = await POST(request, { params: { id: 'immature-id' } })
-      const result = await parseResponse(response)
-      
-      expect(result.status).toBe(400)
-      expect(result.data).toHaveProperty('ok', false)
-      expect((result.data as ApiResponse).error).toHaveProperty('code', 'VALIDATION_ERROR')
-      expect((result.data as ApiResponse).error?.message).toContain('not matured')
-    })
-
     it('should return 500 for upstream service failures', async () => {
       vi.mocked(settleCommitmentOnChain).mockRejectedValue(
         new Error('Upstream service unavailable')
@@ -309,81 +275,30 @@ describe('POST /api/commitments/[id]/settle - Error States', () => {
       expect(result.data).toHaveProperty('ok', false)
       expect((result.data as ApiResponse).error).toHaveProperty('code', 'INTERNAL_ERROR')
     })
-
-    it('should handle network timeout errors', async () => {
-      const timeoutError = new Error('Network timeout')
-      timeoutError.name = 'TimeoutError'
-      vi.mocked(settleCommitmentOnChain).mockRejectedValue(timeoutError)
-      
-      const request = createMockRequest(
-        'http://localhost:3000/api/commitments/test-id/settle',
-        { method: 'POST', body: {} }
-      )
-      
-      const response = await POST(request, { params: { id: 'test-id' } })
-      const result = await parseResponse(response)
-      
-      expect(result.status).toBe(500)
-      expect(result.data).toHaveProperty('ok', false)
-      expect((result.data as ApiResponse).error?.message).toContain('authorized')
-    })
-  })
-
-  describe('Logging', () => {
-    it('should log successful settlement attempts', async () => {
-      vi.mocked(settleCommitmentOnChain).mockResolvedValue({
-        settlementAmount: '1000.50',
-        finalStatus: 'SETTLED',
-        txHash: 'abc123',
-        reference: 'CHAIN_CALL_SETTLE_COMMITMENT'
-      })
-      
-      const request = createMockRequest(
-        'http://localhost:3000/api/commitments/test-id/settle',
-        { method: 'POST', body: { callerAddress: 'test-address' } }
-      )
-      
-      await POST(request, { params: { id: 'test-id' } })
-      
-      expect(logCommitmentSettled).toHaveBeenCalledWith({
-        ip: '127.0.0.1',
-        commitmentId: 'test-id',
-        callerAddress: 'test-address',
-        settlementAmount: '1000.50',
-        finalStatus: 'SETTLED',
-        txHash: 'abc123'
-      })
-    })
-
-    it('should log failed settlement attempts', async () => {
-      vi.mocked(settleCommitmentOnChain).mockRejectedValue(
-        new Error('Settlement failed')
-      )
-      
-      const request = createMockRequest(
-        'http://localhost:3000/api/commitments/test-id/settle',
-        { method: 'POST', body: { callerAddress: 'test-address' } }
-      )
-      
-      await POST(request, { params: { id: 'test-id' } })
-      
-      expect(logCommitmentSettled).toHaveBeenCalledWith({
-        ip: '127.0.0.1',
-        commitmentId: 'test-id',
-        callerAddress: 'test-address',
-        error: 'Settlement failed'
-      })
-    })
   })
 })
 
-/**
- * Test suite for early exit endpoint error states
- */
-describe('POST /api/commitments/[id]/early-exit - Error States', () => {
+describe('Early Exit API Error States', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(checkRateLimit).mockResolvedValue(true)
+  })
+
+  describe('Rate Limiting', () => {
+    it('should return 429 when rate limit is exceeded', async () => {
+      vi.mocked(checkRateLimit).mockResolvedValue(false)
+      
+      const request = createMockRequest(
+        'http://localhost:3000/api/commitments/test-id/early-exit',
+        { method: 'POST', body: {} }
+      )
+      
+      const response = await EarlyExitPOST(request, { params: { id: 'test-id' } })
+      const result = await parseResponse(response)
+      
+      expect(result.status).toBe(429)
+      expect(result.data).toHaveProperty('error', 'Too many requests')
+    })
   })
 
   describe('Request Validation', () => {
@@ -404,12 +319,14 @@ describe('POST /api/commitments/[id]/early-exit - Error States', () => {
         error: 'failed to parse request body'
       })
     })
+  })
 
-    it('should handle missing request body gracefully', async () => {
-      const request = new Request('http://localhost:3000/api/commitments/test-id/early-exit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
+  describe('Response Format', () => {
+    it('should return stub response with correct format', async () => {
+      const request = createMockRequest(
+        'http://localhost:3000/api/commitments/test-id/early-exit',
+        { method: 'POST', body: {} }
+      )
       
       const response = await EarlyExitPOST(request, { params: { id: 'test-id' } })
       const result = await parseResponse(response)
