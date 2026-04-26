@@ -8,7 +8,7 @@ import {
   nativeToScVal,
   scValToNative,
 } from "@stellar/stellar-sdk";
-import { BackendError, normalizeBackendError } from "@/lib/backend/errors";
+import { BackendError } from "@/lib/backend/errors";
 import { getBackendConfig } from "@/lib/backend/config";
 import { logInfo } from "@/lib/backend/logger";
 import { cache } from "@/lib/backend/cache/factory";
@@ -82,8 +82,7 @@ export interface SettleCommitmentOnChainResult {
   finalStatus: string;
 }
 
-type ContractCallMode = "read" | "write";
-
+type ContractCallMode = 'read' | 'write';
 interface ContractInvocationResult {
   value: unknown;
   txHash?: string;
@@ -169,6 +168,77 @@ function normalizeStatus(value: unknown): ChainCommitmentStatus {
     return raw;
   }
   return "UNKNOWN";
+}
+
+/**
+ * Normalizes blockchain-related errors into stable BackendError types.
+ * Maps RPC failures, simulation errors, and timeouts to appropriate status codes.
+ * Ensures that sensitive raw RPC details are not leaked to the client.
+ */
+function normalizeContractError(
+  error: unknown,
+  defaults: {
+    code: string;
+    message: string;
+    status: number;
+    details?: Record<string, unknown>;
+  }
+): BackendError {
+  // If it's already a well-formed BackendError, we enrich it with defaults
+  if (error instanceof BackendError) {
+    const isRetryable = [429, 503, 504].includes(error.status);
+    return new BackendError({
+      code: error.code,
+      message: error.message,
+      status: error.status,
+      details: {
+        ...asRecord(error.details),
+        ...asRecord(defaults.details),
+        retryable: isRetryable || asRecord(error.details).retryable === true,
+      },
+    });
+  }
+
+  const errMessage = error instanceof Error ? error.message : String(error);
+  const errStr = errMessage.toLowerCase();
+
+  let status = defaults.status;
+  let code = defaults.code;
+  let message = defaults.message;
+  let retryable = false;
+
+  // Pattern match for specific failure types from Soroban RPC or SDK
+  if (errStr.includes("timeout") || errStr.includes("deadline") || errStr.includes("timed out")) {
+    status = 504;
+    code = "GATEWAY_TIMEOUT";
+    message = "The blockchain operation timed out. It may still be processed later.";
+    retryable = true;
+  } else if (errStr.includes("429") || errStr.includes("rate limit") || errStr.includes("too many requests")) {
+    status = 429;
+    code = "TOO_MANY_REQUESTS";
+    message = "Rate limit exceeded for blockchain calls. Please try again later.";
+    retryable = true;
+  } else if (errStr.includes("not found") || errStr.includes("404")) {
+    status = 404;
+    code = "NOT_FOUND";
+    message = "The requested resource was not found on the blockchain.";
+  } else if (errStr.includes("insufficient") || errStr.includes("invalid") || errStr.includes("malformed")) {
+    status = 400;
+    code = "VALIDATION_ERROR";
+    message = "The transaction was rejected due to invalid parameters or state.";
+  } else if (status >= 500) {
+    retryable = true;
+  }
+
+  return new BackendError({
+    code,
+    message,
+    status,
+    details: {
+      ...asRecord(defaults.details),
+      retryable,
+    },
+  });
 }
 
 function parseChainCommitment(value: unknown): ChainCommitment {
@@ -283,11 +353,11 @@ async function waitForTransactionResult(
       return tx.returnValue ? scValToNative(tx.returnValue) : null;
     }
     if (tx.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
-      throw new BackendError({
+      throw normalizeContractError(new Error("Transaction execution failed"), {
         code: "BLOCKCHAIN_CALL_FAILED",
         message: "Soroban transaction failed.",
         status: 502,
-        details: { hash, txStatus: tx.status },
+        details: { hash, txStatus: tx.status }
       });
     }
 
@@ -296,11 +366,11 @@ async function waitForTransactionResult(
     });
   }
 
-  throw new BackendError({
+  throw normalizeContractError(new Error("RPC Timeout"), {
     code: "BLOCKCHAIN_CALL_FAILED",
     message: "Timed out waiting for Soroban transaction result.",
     status: 504,
-    details: { hash },
+    details: { hash }
   });
 }
 
@@ -350,11 +420,11 @@ async function invokeContractMethod(
 
   const simulation = await server.simulateTransaction(tx);
   if (SorobanRpc.Api.isSimulationError(simulation)) {
-    throw new BackendError({
+    throw normalizeContractError(new Error(simulation.error), {
       code: "BLOCKCHAIN_CALL_FAILED",
       message: `Soroban simulation failed for ${methodName}.`,
       status: 502,
-      details: { methodName, error: simulation.error },
+      details: { methodName }
     });
   }
 
@@ -423,7 +493,7 @@ export async function createCommitmentOnChain(
 
     return result;
   } catch (error) {
-    throw normalizeBackendError(error, {
+    throw normalizeContractError(error, {
       code: "BLOCKCHAIN_CALL_FAILED",
       message: "Unable to create commitment on chain.",
       status: 502,
@@ -463,7 +533,7 @@ export async function getCommitmentFromChain(
     await cache.set(cacheKey, commitment, CacheTTL.COMMITMENT_DETAIL);
     return commitment;
   } catch (error) {
-    throw normalizeBackendError(error, {
+    throw normalizeContractError(error, {
       code: "BLOCKCHAIN_CALL_FAILED",
       message: "Unable to fetch commitment from chain.",
       status: 502,
@@ -522,7 +592,7 @@ export async function getUserCommitmentsFromChain(
     await cache.set(cacheKey, commitments, CacheTTL.USER_COMMITMENTS);
     return commitments;
   } catch (error) {
-    throw normalizeBackendError(error, {
+    throw normalizeContractError(error, {
       code: "BLOCKCHAIN_CALL_FAILED",
       message: "Unable to fetch user commitments from chain.",
       status: 502,
@@ -577,7 +647,7 @@ export async function recordAttestationOnChain(
 
     return result;
   } catch (error) {
-    throw normalizeBackendError(error, {
+    throw normalizeContractError(error, {
       code: "BLOCKCHAIN_CALL_FAILED",
       message: "Unable to record attestation on chain.",
       status: 502,
@@ -655,9 +725,9 @@ export async function settleCommitmentOnChain(
         : "TODO_CHAIN_CALL_SETTLE_COMMITMENT",
     };
   } catch (error) {
-    throw normalizeBackendError(error, {
-      code: "BLOCKCHAIN_CALL_FAILED",
-      message: "Unable to settle commitment on chain.",
+    throw normalizeContractError(error, {
+      code: 'BLOCKCHAIN_CALL_FAILED',
+      message: 'Unable to settle commitment on chain.',
       status: 502,
       details: {
         method: "settle_commitment",
