@@ -12,6 +12,7 @@ import {
 } from '@/lib/backend/errors';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
+import { parsePaginationParams, paginateArray } from '@/lib/backend/pagination';
 import { getMockData } from '@/lib/backend/mockDb';
 import type { RecordAttestationOnChainParams } from '@/lib/backend/services/contracts';
 
@@ -165,9 +166,28 @@ export const GET = withApiHandler(async (req: NextRequest) => {
     throw new TooManyRequestsError();
   }
 
-  const { attestations } = await getMockData();
+  const { searchParams } = new URL(req.url);
+  const paginationParams = parsePaginationParams(searchParams);
+  const commitmentId = searchParams.get('commitmentId');
 
-  return ok({ attestations }, 200);
+  let { attestations } = await getMockData();
+
+  if (commitmentId) {
+    attestations = attestations.filter((a) => a.commitmentId === commitmentId);
+  }
+
+  const paginated = paginateArray(attestations, paginationParams);
+
+  return ok({
+    items: paginated.data,
+    meta: {
+      totalItems: paginated.meta.total,
+      itemCount: paginated.data.length,
+      itemsPerPage: paginated.meta.pageSize,
+      totalPages: paginated.meta.totalPages,
+      currentPage: paginated.meta.page,
+    },
+  }, 200);
 });
 
 export const POST = withApiHandler(async (req: NextRequest) => {
