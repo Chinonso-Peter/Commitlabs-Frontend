@@ -1,31 +1,35 @@
 import { NextRequest } from 'next/server';
-import { assertMutationCsrf } from '@/lib/backend/csrf';
 import { checkRateLimit } from '@/lib/backend/rateLimit';
+import { getClientIp } from '@/lib/backend/getClientIp';
+import { logEarlyExit } from '@/lib/backend/logger';
 import { withApiHandler } from '@/lib/backend/withApiHandler';
 import { ok } from '@/lib/backend/apiResponse';
-import { logEarlyExit } from '@/lib/backend/logger';
 import { TooManyRequestsError } from '@/lib/backend/errors';
 
 export const POST = withApiHandler(async (req: NextRequest, context: { params: Record<string, string> }) => {
   assertMutationCsrf(req);
 
-  const { id } = context.params;
-  const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
+export const POST = withApiHandler(async (req: NextRequest, { params }: Params) => {
+    const { id } = params;
 
-  const isAllowed = await checkRateLimit(ip, 'api/commitments/early-exit');
-  if (!isAllowed) {
-    throw new TooManyRequestsError();
-  }
+    const ip = req.ip ?? req.headers.get('x-forwarded-for') ?? 'anonymous';
 
-  try {
-    const body = await req.json();
+    const { allowed, retryAfterSeconds } = await checkRateLimit(ip, 'api/commitments/early-exit');
+    if (!allowed) {
+        throw new TooManyRequestsError(undefined, undefined, retryAfterSeconds);
+    }
+
+    let body: Record<string, unknown> = {};
+    try {
+        body = await req.json();
+    } catch {
+        // non-fatal - log and continue
+    }
+
     logEarlyExit({ ip, commitmentId: id, ...body });
-  } catch {
-    logEarlyExit({ ip, commitmentId: id, error: 'failed to parse request body' });
-  }
 
-  return ok({
-    message: `Stub early-exit endpoint for commitment ${id}`,
-    commitmentId: id,
-  });
+    return ok({
+        message: `Stub early-exit endpoint for commitment ${id}`,
+        commitmentId: id,
+    });
 });
