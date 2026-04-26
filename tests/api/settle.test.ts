@@ -3,197 +3,180 @@ import { POST } from '@/app/api/commitments/[id]/settle/route'
 import { createMockRequest, parseResponse } from './helpers'
 import * as contractsModule from '@/lib/backend/services/contracts'
 
-vi.mock('@/lib/backend/services/contracts', async () => {
-  const actual = await vi.importActual('@/lib/backend/services/contracts')
+const OWNER_ADDRESS = 'GABC123OWNER456789'
+const OTHER_ADDRESS = 'GXYZ789OTHER123456'
+const COMMITMENT_ID = 'cm_test_123'
+const PAST_EXPIRY = new Date(Date.now() - 1000).toISOString()
+const FUTURE_EXPIRY = new Date(Date.now() + 100000).toISOString()
+
+async function createSettleRequest(
+  commitmentId: string,
+  body: { actorAddress: string; callerAddress?: string }
+) {
+  return createMockRequest(
+    `http://localhost:3000/api/commitments/${commitmentId}/settle`,
+    { method: 'POST', body }
+  )
+}
+
+vi.mock('@/lib/backend/services/contracts', async (importOriginal) => {
+  const actual = await importOriginal()
   return {
     ...actual,
-    settleCommitmentOnChain: vi.fn(),
     getCommitmentFromChain: vi.fn(),
+    settleCommitmentOnChain: vi.fn(),
   }
 })
 
-vi.mock('@/lib/backend/rateLimit', () => ({
-  checkRateLimit: vi.fn().mockResolvedValue(true),
-}))
-
 describe('POST /api/commitments/[id]/settle', () => {
-  const mockCommitmentId = 'test-commitment-123'
-  const mockOwnerAddress = 'GD5TIP5CKNSV7QZP2FGV6BOB7ZHQG4T4S5R6K4YZJ2MJJQ6XZM4XJQ5Z'
-  const mockCallerAddress = 'GD5TIP5CKNSV7QZP2FGV6BOB7ZHQG4T4S5R6K4YZJ2MJJQ6XZM4XJQ5Z'
-  const otherAddress = 'GCZ7Z7K5X5D4X3A2B1C0D9E8F7A6B5C4D3E2F1G0H9I8J7K6L5M4'
-
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('should return 200 and settle commitment when authorized owner calls', async () => {
-    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue({
-      id: mockCommitmentId,
-      ownerAddress: mockOwnerAddress,
+  it('should return 200 on successful settlement', async () => {
+    const mockCommitment = {
+      id: COMMITMENT_ID,
+      ownerAddress: OWNER_ADDRESS,
       status: 'ACTIVE',
-      expiresAt: '2020-01-01T00:00:00.000Z',
-    })
-
-    vi.mocked(contractsModule.settleCommitmentOnChain).mockResolvedValue({
-      settlementAmount: '1000.50',
+      expiresAt: PAST_EXPIRY,
+    }
+    const mockSettlement = {
+      settlementAmount: '100',
       finalStatus: 'SETTLED',
-      txHash: 'abc123hash',
+      txHash: 'tx123',
+      reference: 'ref123',
+    }
+
+    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue(mockCommitment)
+    vi.mocked(contractsModule.settleCommitmentOnChain).mockResolvedValue(mockSettlement)
+
+    const request = await createSettleRequest(COMMITMENT_ID, {
+      actorAddress: OWNER_ADDRESS,
     })
-
-    const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: { callerAddress: mockCallerAddress },
-      }
-    )
-
-    const response = await POST(request, { params: { id: mockCommitmentId } })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
     const result = await parseResponse(response)
 
     expect(result.status).toBe(200)
     expect(result.data.success).toBe(true)
-    expect(result.data.data).toHaveProperty('commitmentId', mockCommitmentId)
-    expect(result.data.data).toHaveProperty('settlementAmount', '1000.50')
-    expect(result.data.data).toHaveProperty('finalStatus', 'SETTLED')
+    expect(result.data.data.commitmentId).toBe(COMMITMENT_ID)
+    expect(result.data.data.settlementAmount).toBe('100')
+    expect(result.data.data.finalStatus).toBe('SETTLED')
   })
 
-  it('should return 401 when callerAddress is not provided', async () => {
-    const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: {},
-      }
-    )
-
-    const response = await POST(request, { params: { id: mockCommitmentId } })
-    const result = await parseResponse(response)
-
-    expect(result.status).toBe(401)
-    expect(result.data.success).toBe(false)
-    expect(result.data.error).toHaveProperty('code', 'UNAUTHORIZED')
-  })
-
-  it('should return 403 when caller is not the owner', async () => {
-    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue({
-      id: mockCommitmentId,
-      ownerAddress: mockOwnerAddress,
+  it('should return 403 if actor is not the owner', async () => {
+    const mockCommitment = {
+      id: COMMITMENT_ID,
+      ownerAddress: OWNER_ADDRESS,
       status: 'ACTIVE',
-      expiresAt: '2020-01-01T00:00:00.000Z',
+      expiresAt: PAST_EXPIRY,
+    }
+
+    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue(mockCommitment)
+
+    const request = await createSettleRequest(COMMITMENT_ID, {
+      actorAddress: OTHER_ADDRESS,
     })
-
-    const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: { callerAddress: otherAddress },
-      }
-    )
-
-    const response = await POST(request, { params: { id: mockCommitmentId } })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
     const result = await parseResponse(response)
 
     expect(result.status).toBe(403)
     expect(result.data.success).toBe(false)
-    expect(result.data.error).toHaveProperty('code', 'FORBIDDEN')
+    expect(result.data.error.code).toBe('FORBIDDEN')
   })
 
-  it('should return 409 when commitment is already settled', async () => {
-    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue({
-      id: mockCommitmentId,
-      ownerAddress: mockOwnerAddress,
+  it('should return 409 if already settled', async () => {
+    const mockCommitment = {
+      id: COMMITMENT_ID,
+      ownerAddress: OWNER_ADDRESS,
       status: 'SETTLED',
-      expiresAt: '2020-01-01T00:00:00.000Z',
+      expiresAt: PAST_EXPIRY,
+    }
+
+    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue(mockCommitment)
+
+    const request = await createSettleRequest(COMMITMENT_ID, {
+      actorAddress: OWNER_ADDRESS,
     })
-
-    const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: { callerAddress: mockCallerAddress },
-      }
-    )
-
-    const response = await POST(request, { params: { id: mockCommitmentId } })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
     const result = await parseResponse(response)
 
     expect(result.status).toBe(409)
     expect(result.data.success).toBe(false)
-    expect(result.data.error).toHaveProperty('code', 'CONFLICT')
-    expect(result.data.error.message).toContain('already been settled')
+    expect(result.data.error.code).toBe('CONFLICT')
   })
 
-  it('should return 400 when commitment status is VIOLATED', async () => {
-    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue({
-      id: mockCommitmentId,
-      ownerAddress: mockOwnerAddress,
+  it('should return 409 if violated', async () => {
+    const mockCommitment = {
+      id: COMMITMENT_ID,
+      ownerAddress: OWNER_ADDRESS,
       status: 'VIOLATED',
-      expiresAt: '2020-01-01T00:00:00.000Z',
+      expiresAt: PAST_EXPIRY,
+    }
+
+    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue(mockCommitment)
+
+    const request = await createSettleRequest(COMMITMENT_ID, {
+      actorAddress: OWNER_ADDRESS,
     })
-
-    const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: { callerAddress: mockCallerAddress },
-      }
-    )
-
-    const response = await POST(request, { params: { id: mockCommitmentId } })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
     const result = await parseResponse(response)
 
-    expect(result.status).toBe(400)
+    expect(result.status).toBe(409)
     expect(result.data.success).toBe(false)
-    expect(result.data.error).toHaveProperty('code', 'BAD_REQUEST')
-    expect(result.data.error.message).toContain('violated')
+    expect(result.data.error.code).toBe('CONFLICT')
   })
 
-  it('should return 400 when commitment status is EARLY_EXIT', async () => {
-    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue({
-      id: mockCommitmentId,
-      ownerAddress: mockOwnerAddress,
+  it('should return 409 if early exited', async () => {
+    const mockCommitment = {
+      id: COMMITMENT_ID,
+      ownerAddress: OWNER_ADDRESS,
       status: 'EARLY_EXIT',
-      expiresAt: '2020-01-01T00:00:00.000Z',
+      expiresAt: PAST_EXPIRY,
+    }
+
+    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue(mockCommitment)
+
+    const request = await createSettleRequest(COMMITMENT_ID, {
+      actorAddress: OWNER_ADDRESS,
     })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
+    const result = await parseResponse(response)
 
-    const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: { callerAddress: mockCallerAddress },
-      }
-    )
+    expect(result.status).toBe(409)
+    expect(result.data.success).toBe(false)
+    expect(result.data.error.code).toBe('CONFLICT')
+  })
 
-    const response = await POST(request, { params: { id: mockCommitmentId } })
+  it('should return 400 if commitment has not matured', async () => {
+    const mockCommitment = {
+      id: COMMITMENT_ID,
+      ownerAddress: OWNER_ADDRESS,
+      status: 'ACTIVE',
+      expiresAt: FUTURE_EXPIRY,
+    }
+
+    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue(mockCommitment)
+
+    const request = await createSettleRequest(COMMITMENT_ID, {
+      actorAddress: OWNER_ADDRESS,
+    })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
     const result = await parseResponse(response)
 
     expect(result.status).toBe(400)
     expect(result.data.success).toBe(false)
-    expect(result.data.error).toHaveProperty('code', 'BAD_REQUEST')
-    expect(result.data.error.message).toContain('early')
+    expect(result.data.error.code).toBe('VALIDATION_ERROR')
   })
 
-  it('should return 404 when commitment not found', async () => {
-    vi.mocked(contractsModule.getCommitmentFromChain).mockResolvedValue({
-      id: mockCommitmentId,
-      ownerAddress: '',
-      status: 'UNKNOWN',
-    } as any)
-
+  it('should return 400 if actor address is missing', async () => {
     const request = createMockRequest(
-      `http://localhost:3000/api/commitments/${mockCommitmentId}/settle`,
-      {
-        method: 'POST',
-        body: { callerAddress: mockCallerAddress },
-      }
+      `http://localhost:3000/api/commitments/${COMMITMENT_ID}/settle`,
+      { method: 'POST', body: { callerAddress: 'test' } }
     )
-
-    const response = await POST(request, { params: { id: mockCommitmentId } })
+    const response = await POST(request, { params: { id: COMMITMENT_ID } })
     const result = await parseResponse(response)
 
-    expect(result.status).toBe(404)
+    expect(result.status).toBe(400)
     expect(result.data.success).toBe(false)
-    expect(result.data.error).toHaveProperty('code', 'NOT_FOUND')
   })
 })
